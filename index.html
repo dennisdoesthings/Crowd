@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crowd-Management-Tool</title>
+<style>
+  :root {
+    --bg: #12161c; --panel: #1a2029; --panel2: #222a35; --line: #313b49;
+    --text: #e6eaf0; --muted: #94a0b1; --accent: #4f9cf9;
+    --ok: #22c55e; --warn: #f59e0b; --crit: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0 10px 0 2px; font-weight: 650; white-space: nowrap; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+  button, select, input[type=text], input[type=number] {
+    font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px;
+  }
+  button { cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.active { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+  button.primary { background: #1d4ed8; border-color: #1d4ed8; }
+  button.danger { color: #fca5a5; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stage { flex: 1; position: relative; min-width: 0; background: #0c0f13; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #hint { position: absolute; left: 10px; bottom: 8px; right: 10px; color: #cbd5e1; font-size: 12px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  #zoom button { width: 34px; padding: 5px 0; }
+  aside { width: 340px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); }
+  section { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  section h2 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .row label { flex: 1; color: #cfd6e0; }
+  .row input[type=number], .row input[type=text], .row select { width: 130px; }
+  .row input[type=range] { width: 130px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kpi { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
+  .kpi b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 11px; }
+  #status { padding: 6px 8px; border-radius: 6px; font-weight: 600; margin-bottom: 8px; background: #14532d; }
+  #status.warn { background: #78350f; } #status.crit { background: #7f1d1d; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td button { padding: 2px 7px; font-size: 12px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  #chart { width: 100%; height: 80px; background: var(--panel2); border-radius: 6px; display: block; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  @media (max-width: 820px) {
+    main { flex-direction: column; }
+    #stage { flex: none; height: 58vh; }
+    aside { width: 100%; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    body { height: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Crowd-Management</h1>
+  <div class="btns" id="tools">
+    <button data-tool="select" class="active" title="Elemente auswählen, verschieben, Griffe ziehen">Auswahl</button>
+    <button data-tool="wall" title="Wand ziehen">Wand</button>
+    <button data-tool="door" title="Durchgang in eine Wandlücke ziehen">Durchgang</button>
+    <button data-tool="obstacle" title="Hindernis (Rechteck) aufziehen">Hindernis</button>
+    <button data-tool="source" title="Fläche, auf der Personen starten / zuströmen">Quelle</button>
+    <button data-tool="exit" title="Zielfläche, an der Personen das Gelände verlassen">Ziel</button>
+    <button data-tool="measure" title="Bekannte Strecke nachziehen und reale Länge eingeben">Maßstab</button>
+    <button data-tool="pan" title="Ansicht verschieben">Hand</button>
+  </div>
+  <div class="sep"></div>
+  <button id="play" class="primary">▶ Start</button>
+  <button id="reset">Zurücksetzen</button>
+  <select id="speed" title="Simulationsgeschwindigkeit">
+    <option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option><option value="8">8×</option>
+  </select>
+  <div class="sep"></div>
+  <button id="undo" title="Strg+Z">Rückgängig</button>
+  <label class="muted"><input type="checkbox" id="snap" checked> Raster 0,5 m</label>
+</header>
+
+<main>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="zoom"><button id="zin">+</button><button id="zout">−</button><button id="zfit" title="Einpassen">⤢</button></div>
+    <div id="hint"></div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Auswahl</h2>
+      <div id="props"><div class="muted">Kein Element ausgewählt.</div></div>
+    </section>
+
+    <section>
+      <h2>Lage</h2>
+      <div id="status">Unkritisch</div>
+      <div class="kpis">
+        <div class="kpi"><b id="k-time">0:00</b><span>Zeit</span></div>
+        <div class="kpi"><b id="k-in">0</b><span>Personen im Gelände</span></div>
+        <div class="kpi"><b id="k-out">0</b><span>am Ziel angekommen</span></div>
+        <div class="kpi"><b id="k-v">–</b><span>⌀ Geschwindigkeit m/s</span></div>
+        <div class="kpi"><b id="k-d">0,0</b><span>max. Dichte P/m²</span></div>
+        <div class="kpi"><b id="k-dp">0,0</b><span>Spitzendichte P/m²</span></div>
+        <div class="kpi"><b id="k-a">0</b><span>Fläche ≥ Warnschwelle m²</span></div>
+        <div class="kpi"><b id="k-last">–</b><span>letzte Person am Ziel</span></div>
+      </div>
+      <div style="margin-top:8px"><canvas id="chart" width="632" height="160"></canvas></div>
+      <div class="legend"><span><i style="background:#4f9cf9"></i>Personen im Gelände</span><span><i style="background:#f59e0b"></i>max. Dichte</span></div>
+    </section>
+
+    <section>
+      <h2>Durchgänge</h2>
+      <table id="doors"></table>
+    </section>
+
+    <section>
+      <h2>Crowd-Stellgrößen</h2>
+      <div class="row"><label>Wunschgeschwindigkeit (m/s)</label><input type="number" data-p="v0" min="0.3" max="3" step="0.1"></div>
+      <div class="row"><label>Streuung Geschwindigkeit (±)</label><input type="number" data-p="vsd" min="0" max="1" step="0.05"></div>
+      <div class="row"><label>Körperradius (m)</label><input type="number" data-p="radius" min="0.15" max="0.4" step="0.01"></div>
+      <div class="row"><label>Abstandhalten <span class="muted" id="repel-v"></span></label><input type="range" data-p="repel" min="0.3" max="2.5" step="0.1"></div>
+      <div class="row"><label>Warnschwelle Dichte (P/m²)</label><input type="number" data-p="warn" min="0.5" max="8" step="0.5"></div>
+      <div class="row"><label>Kritische Dichte (P/m²)</label><input type="number" data-p="crit" min="1" max="10" step="0.5"></div>
+      <div class="row"><label>Dichte-Heatmap anzeigen</label><input type="checkbox" data-p="heat"></div>
+      <div class="legend">
+        <span><i style="background:#4ade80"></i>locker</span><span><i style="background:#facc15"></i>Warnschwelle</span>
+        <span><i style="background:#ef4444"></i>kritisch</span><span><i style="background:#1e3a8a"></i>Person</span><span><i style="background:#c026d3"></i>steht</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Karte</h2>
+      <div class="row"><label>Breite (m)</label><input type="number" id="w-w" min="5" max="1000" step="1"></div>
+      <div class="row"><label>Höhe (m)</label><input type="number" id="w-h" min="5" max="1000" step="1"></div>
+      <div class="row"><label>Grundriss-Bild (PNG/JPG/SVG)</label><button id="bg-btn">Laden…</button></div>
+      <div class="row"><label>Deckkraft Grundriss</label><input type="range" id="bg-op" min="0" max="1" step="0.05"></div>
+      <div class="btns"><button id="bg-del">Grundriss entfernen</button></div>
+      <p class="muted">Bild laden, dann mit „Maßstab“ eine bekannte Strecke (z.&nbsp;B. eine Türbreite oder Saallänge) nachziehen. Wände und Durchgänge anschließend über dem Plan nachzeichnen – das Bild allein blockiert niemanden.</p>
+    </section>
+
+    <section>
+      <h2>Szenario</h2>
+      <div class="btns">
+        <button id="save">Speichern (JSON)</button>
+        <button id="load">Laden…</button>
+        <button id="demo">Beispielhalle</button>
+        <button id="clear" class="danger">Alles leeren</button>
+      </div>
+      <p class="muted">Der Stand wird automatisch im Browser zwischengespeichert. Vereinfachtes Modell zur Orientierung – kein Ersatz für ein geprüftes Sicherheits- oder Entfluchtungskonzept.</p>
+    </section>
+  </aside>
+</main>
+
+<input type="file" id="f-bg" accept="image/*" hidden>
+<input type="file" id="f-json" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const DT = 0.05, TAU = 0.5, A_AG = 6, B_AG = 0.15, K_C = 150, A_W = 10, B_W = 0.1, LAM = 0.35;
+const DIRS = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+const LABEL = { wall: 'Wand', door: 'Durchgang', obstacle: 'Hindernis', source: 'Quelle', exit: 'Ziel' };
+const HINTS = {
+  select: 'Klicken zum Auswählen, ziehen zum Verschieben, Griffe zum Ändern. Entf löscht. Mausrad zoomt, rechte Maustaste verschiebt die Ansicht.',
+  wall: 'Wand: ziehen von Anfang bis Ende. Lücken für Durchgänge frei lassen.',
+  door: 'Durchgang: in einer Wandlücke von Kante zu Kante ziehen. Die Länge ist die Durchgangsbreite.',
+  obstacle: 'Hindernis: Rechteck aufziehen (Theke, Bühne, Absperrung, Säule …).',
+  source: 'Quelle: Fläche aufziehen. Startbelegung und Zustrom rechts einstellen.',
+  exit: 'Ziel: Fläche aufziehen, an der Personen das Gelände verlassen.',
+  measure: 'Maßstab: eine Strecke mit bekannter Länge nachziehen, danach die reale Länge eingeben.',
+  pan: 'Hand: ziehen verschiebt die Ansicht.'
+};
+const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+
+/* ---------- Zustand ---------- */
+let S = null;                // Szenario (wird gespeichert)
+let bgImg = null;
+let agents = [], simTime = 0, running = false, stepCount = 0;
+let RT = new Map();          // Laufzeitdaten je Element
+let stats = { spawned: 0, left: 0, peak: 0, maxD: 0, area: 0, lastLeft: null, meanV: 0 };
+let hist = [];
+let NAV = null, navDirty = true;
+let tool = 'select', selId = null, drag = null, undoStack = [];
+let view = { s: 10, ox: 0, oy: 0 };
+
+function defaults() {
+  return { version: 1, world: { w: 60, h: 40 }, bg: null, nextId: 1, items: [],
+    params: { v0: 1.3, vsd: 0.2, radius: 0.22, repel: 1, warn: 2, crit: 4, heat: true } };
+}
+function demo() {
+  const s = defaults();
+  const add = o => { o.id = s.nextId++; s.items.push(o); return o; };
+  const wall = (x1, y1, x2, y2) => add({ type: 'wall', x1, y1, x2, y2 });
+  wall(2,2,58,2); wall(2,2,2,38); wall(2,38,40,38); wall(44,38,58,38); wall(58,2,58,8); wall(58,11,58,38);
+  wall(32,2,32,9); wall(32,11,32,27); wall(32,30,32,38);
+  const door = (name, x1, y1, x2, y2) => add({ type: 'door', name, x1, y1, x2, y2, state: 'open', dir: 'both', limit: 0 });
+  door('Saaltür Nord', 32,9,32,11); door('Saaltür Süd', 32,27,32,30);
+  door('Ausgang Ost', 58,8,58,11); door('Ausgang Süd', 40,38,44,38);
+  const ob = (name, x, y, w, h) => add({ type: 'obstacle', name, x, y, w, h });
+  ob('Bühne', 4,14,5,12); ob('Theke', 42,16,6,3); ob('Säule', 38,24,1,1); ob('Säule', 50,24,1,1);
+  add({ type: 'exit', name: 'Ost', x: 58.5, y: 7, w: 1.5, h: 5 });
+  add({ type: 'exit', name: 'Süd', x: 39, y: 38.5, w: 6, h: 1.5 });
+  add({ type: 'source', name: 'Saal', x: 11, y: 5, w: 19, h: 30, initial: 400, rate: 0, max: 0, target: 'nearest' });
+  add({ type: 'source', name: 'Foyer', x: 34, y: 4, w: 22, h: 8, initial: 40, rate: 0, max: 0, target: 'nearest' });
+  return s;
+}
+
+/* ---------- Geometrie ---------- */
+function segInt(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (Math.abs(d) < 1e-12) return false;
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+  return t >= -1e-9 && t <= 1 + 1e-9 && u >= -1e-9 && u <= 1 + 1e-9;
+}
+function closest(px, py, s) {
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, l2 = dx * dx + dy * dy;
+  let t = l2 ? ((px - s.x1) * dx + (py - s.y1) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return [s.x1 + t * dx, s.y1 + t * dy];
+}
+function distSeg(px, py, s) { const c = closest(px, py, s); return Math.hypot(px - c[0], py - c[1]); }
+const isSeg = it => it.type === 'wall' || it.type === 'door';
+const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+const segLen = it => Math.hypot(it.x2 - it.x1, it.y2 - it.y1);
+
+/* ---------- Navigation (Flussfelder) ---------- */
+function rt(it) {
+  let r = RT.get(it.id);
+  if (!r) { r = { acc: 0, spawned: 0, tokens: 1, count: 0, stamps: [] }; RT.set(it.id, r); }
+  return r;
+}
+// Darf eine Bewegung mit Richtung (mx,my) den Durchgang passieren? (ohne Dosierung)
+function doorAllows(door, seg, mx, my) {
+  if (door.state === 'closed') return false;
+  if (door.dir === 'both') return true;
+  const dot = mx * -(seg.y2 - seg.y1) + my * (seg.x2 - seg.x1);
+  return door.dir === 'fwd' ? dot > 0 : dot < 0;
+}
+function buildNav() {
+  const W = S.world.w, H = S.world.h;
+  let cs = 0.5; while ((W / cs) * (H / cs) > 300000) cs *= 2;
+  const nx = Math.ceil(W / cs), ny = Math.ceil(H / cs), n = nx * ny;
+  const blk = new Uint8Array(n), solid = new Uint8Array(n), pen = new Float32Array(n).fill(1);
+  const segs = [];
+  for (const it of S.items) {
+    if (it.type === 'wall') segs.push({ x1: it.x1, y1: it.y1, x2: it.x2, y2: it.y2, door: null });
+    else if (it.type === 'door') segs.push({ x1: it.x1, y1: it.y1, x2: it.x2, y2: it.y2, door: it });
+    else if (it.type === 'obstacle') {
+      const a = it.x, b = it.y, c = it.x + it.w, d = it.y + it.h;
+      segs.push({ x1: a, y1: b, x2: c, y2: b, door: null }, { x1: c, y1: b, x2: c, y2: d, door: null },
+                { x1: c, y1: d, x2: a, y2: d, door: null }, { x1: a, y1: d, x2: a, y2: b, door: null });
+      for (let j = Math.max(0, Math.floor(b / cs)); j < Math.min(ny, Math.ceil(d / cs)); j++)
+        for (let i = Math.max(0, Math.floor(a / cs)); i < Math.min(nx, Math.ceil(c / cs)); i++)
+          if (inRect((i + .5) * cs, (j + .5) * cs, it)) solid[j * nx + i] = 1;
+    }
+  }
+  for (const s of segs) {
+    const full = !s.door || s.door.state === 'closed';
+    if (!full && s.door.dir === 'both') continue;
+    const i0 = Math.max(0, Math.floor(Math.min(s.x1, s.x2) / cs) - 1), i1 = Math.min(nx - 1, Math.floor(Math.max(s.x1, s.x2) / cs) + 1);
+    const j0 = Math.max(0, Math.floor(Math.min(s.y1, s.y2) / cs) - 1), j1 = Math.min(ny - 1, Math.floor(Math.max(s.y1, s.y2) / cs) + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const c = j * nx + i, ax = (i + .5) * cs, ay = (j + .5) * cs;
+      for (let d = 0; d < 4; d++) {
+        const ii = i + DIRS[d][0], jj = j + DIRS[d][1];
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        if (!segInt(ax, ay, (ii + .5) * cs, (jj + .5) * cs, s.x1, s.y1, s.x2, s.y2)) continue;
+        const nb = jj * nx + ii;
+        if (full) { blk[c] |= 1 << d; blk[nb] |= 1 << (d + 4); }
+        else if (doorAllows(s.door, s, DIRS[d][0], DIRS[d][1])) blk[nb] |= 1 << (d + 4);
+        else blk[c] |= 1 << d;
+      }
+      if (full) { // Wandnähe verteuern, damit Wege nicht an Wänden kleben
+        const p = 1 + 3 * Math.max(0, 1 - distSeg(ax, ay, s) / 0.8);
+        if (p > pen[c]) pen[c] = p;
+      }
+    }
+  }
+  // Kollisions-Buckets
+  const bs = 2, bnx = Math.ceil(W / bs) + 1, bny = Math.ceil(H / bs) + 1;
+  const buckets = Array.from({ length: bnx * bny }, () => []);
+  for (const s of segs) {
+    const i0 = Math.max(0, Math.floor((Math.min(s.x1, s.x2) - 1) / bs)), i1 = Math.min(bnx - 1, Math.floor((Math.max(s.x1, s.x2) + 1) / bs));
+    const j0 = Math.max(0, Math.floor((Math.min(s.y1, s.y2) - 1) / bs)), j1 = Math.min(bny - 1, Math.floor((Math.max(s.y1, s.y2) + 1) / bs));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) buckets[j * bnx + i].push(s);
+  }
+  const nav = { cs, nx, ny, n, blk, solid, pen, segs, bs, bnx, bny, buckets, fields: new Map(), exits: S.items.filter(i => i.type === 'exit') };
+  const all = [];
+  for (const ex of nav.exits) {
+    const seeds = [];
+    for (let j = Math.max(0, Math.floor(ex.y / cs)); j < Math.min(ny, Math.ceil((ex.y + ex.h) / cs)); j++)
+      for (let i = Math.max(0, Math.floor(ex.x / cs)); i < Math.min(nx, Math.ceil((ex.x + ex.w) / cs)); i++)
+        if (!solid[j * nx + i] && inRect((i + .5) * cs, (j + .5) * cs, ex)) seeds.push(j * nx + i);
+    nav.fields.set(ex.id, dijkstra(nav, seeds));
+    all.push(...seeds);
+  }
+  nav.fields.set('nearest', nav.exits.length === 1 ? nav.fields.get(nav.exits[0].id) : dijkstra(nav, all));
+  nav.dens = new Float32Array(n);
+  NAV = nav; navDirty = false;
+  heatCv.width = nx; heatCv.height = ny;
+}
+function dijkstra(nav, seeds) {
+  const { nx, ny, n, blk, solid, pen, cs } = nav;
+  const dist = new Float32Array(n).fill(Infinity);
+  const hd = [], hi = [];
+  const push = (d, i) => {
+    let k = hd.length; hd.push(d); hi.push(i);
+    while (k > 0) { const p = (k - 1) >> 1; if (hd[p] <= d) break; hd[k] = hd[p]; hi[k] = hi[p]; k = p; }
+    hd[k] = d; hi[k] = i;
+  };
+  const pop = () => {
+    const top = hi[0], d = hd.pop(), i = hi.pop(), len = hd.length;
+    if (len) {
+      let k = 0;
+      for (;;) {
+        let c = 2 * k + 1; if (c >= len) break;
+        if (c + 1 < len && hd[c + 1] < hd[c]) c++;
+        if (hd[c] >= d) break;
+        hd[k] = hd[c]; hi[k] = hi[c]; k = c;
+      }
+      hd[k] = d; hi[k] = i;
+    }
+    return top;
+  };
+  for (const s of seeds) { dist[s] = 0; push(0, s); }
+  while (hd.length) {
+    const dTop = hd[0], c = pop();
+    if (dTop > dist[c]) continue;
+    const ci = c % nx, cj = (c / nx) | 0;
+    for (let d = 0; d < 8; d++) {
+      const i = ci + DIRS[d][0], j = cj + DIRS[d][1];
+      if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+      const nb = j * nx + i;
+      if (solid[nb] || (blk[nb] & (1 << ((d + 4) & 7)))) continue;   // Bewegung nb -> c muss erlaubt sein
+      const nd = Math.fround(dTop + (d & 1 ? 1.41421 : 1) * cs * 0.5 * (pen[c] + pen[nb]));
+      if (nd < dist[nb]) { dist[nb] = nd; push(nd, nb); }
+    }
+  }
+  return dist;
+}
+function bucket(x, y) {
+  const n = NAV, i = Math.min(n.bnx - 1, Math.max(0, Math.floor(x / n.bs))), j = Math.min(n.bny - 1, Math.max(0, Math.floor(y / n.bs)));
+  return n.buckets[j * n.bnx + i];
+}
+function lineBlocked(ax, ay, bx, by) {
+  for (const s of bucket(ax, ay)) {
+    if (!segInt(ax, ay, bx, by, s.x1, s.y1, s.x2, s.y2)) continue;
+    if (!s.door || !doorAllows(s.door, s, bx - ax, by - ay)) return true;
+  }
+  return false;
+}
+
+/* ---------- Simulation ---------- */
+function gauss() { let u = 0; for (let i = 0; i < 4; i++) u += Math.random(); return (u - 2) * 1.73; }
+function spawnIn(src) {
+  const P = S.params, nav = NAV, r = P.radius, min2 = (2 * r * 0.95) ** 2;
+  for (let t = 0; t < 12; t++) {
+    const x = src.x + Math.random() * src.w, y = src.y + Math.random() * src.h;
+    if (x < r || y < r || x > S.world.w - r || y > S.world.h - r) continue;
+    const ci = Math.floor(x / nav.cs), cj = Math.floor(y / nav.cs);
+    if (ci >= nav.nx || cj >= nav.ny || nav.solid[cj * nav.nx + ci]) continue;
+    let free = true;
+    for (const a of agents) { const dx = a.x - x, dy = a.y - y; if (dx * dx + dy * dy < min2) { free = false; break; } }
+    if (!free) continue;
+    agents.push({ x, y, vx: 0, vy: 0, r, v0: Math.max(0.4, P.v0 + gauss() * P.vsd),
+      target: src.target === 'nearest' ? 'nearest' : +src.target, ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
+    rt(src).spawned++; stats.spawned++;
+    return true;
+  }
+  return false;
+}
+function resetSim() {
+  agents = []; simTime = 0; stepCount = 0; RT = new Map(); hist = [];
+  stats = { spawned: 0, left: 0, peak: 0, maxD: 0, area: 0, lastLeft: null, meanV: 0 };
+  if (navDirty || !NAV) buildNav();
+  for (const it of S.items) if (it.type === 'source')
+    for (let k = 0; k < (it.initial || 0); k++) if (!spawnIn(it)) break;
+  computeDensity();
+}
+function updateDir(a) {
+  const nav = NAV, f = nav.fields.get(a.target) || nav.fields.get('nearest');
+  a.go = false;
+  if (!f) return;
+  const cs = nav.cs, ci = Math.min(nav.nx - 1, Math.floor(a.x / cs)), cj = Math.min(nav.ny - 1, Math.floor(a.y / cs));
+  let best = Infinity, tx = 0, ty = 0;
+  for (let d = -1; d < 8; d++) {
+    const i = d < 0 ? ci : ci + DIRS[d][0], j = d < 0 ? cj : cj + DIRS[d][1];
+    if (i < 0 || j < 0 || i >= nav.nx || j >= nav.ny) continue;
+    const c = j * nav.nx + i;
+    if (nav.solid[c] || f[c] === Infinity) continue;
+    const px = (i + .5) * cs, py = (j + .5) * cs;
+    const v = f[c] + Math.hypot(px - a.x, py - a.y) * nav.pen[c];
+    if (v < best && !lineBlocked(a.x, a.y, px, py)) { best = v; tx = px; ty = py; }
+  }
+  if (best === Infinity) return;
+  const dx = tx - a.x, dy = ty - a.y, l = Math.hypot(dx, dy);
+  if (l < 1e-6) return;
+  a.ex = dx / l; a.ey = dy / l; a.go = true;
+}
+function tryMove(a, nx, ny) {
+  let crossed = null;
+  for (const s of bucket(a.x, a.y)) {
+    if (!segInt(a.x, a.y, nx, ny, s.x1, s.y1, s.x2, s.y2)) continue;
+    if (!s.door) return false;
+    if (!doorAllows(s.door, s, nx - a.x, ny - a.y)) return false;
+    if (s.door.limit > 0 && rt(s.door).tokens < 1) return false;
+    crossed = s.door;
+  }
+  if (crossed) { const r = rt(crossed); if (crossed.limit > 0) r.tokens -= 1; r.count++; r.stamps.push(simTime); }
+  return true;
+}
+function step() {
+  const P = S.params, nav = NAV, W = S.world.w, H = S.world.h;
+  for (const it of S.items) {
+    if (it.type === 'source' && it.rate > 0) {
+      const r = rt(it); r.acc += it.rate / 60 * DT;
+      while (r.acc >= 1) {
+        if (it.max > 0 && r.spawned >= it.max) { r.acc = 0; break; }
+        if (!spawnIn(it)) { r.acc = Math.min(r.acc, 5); break; }
+        r.acc -= 1;
+      }
+    } else if (it.type === 'door' && it.limit > 0) {
+      const r = rt(it); r.tokens = Math.min(1.5, r.tokens + it.limit / 60 * DT);
+    }
+  }
+  const n = agents.length, hnx = Math.ceil(W) + 1, hny = Math.ceil(H) + 1;
+  const head = new Int32Array(hnx * hny).fill(-1), next = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = agents[i], c = Math.floor(a.y) * hnx + Math.floor(a.x);
+    next[i] = head[c]; head[c] = i;
+  }
+  for (let i = 0; i < n; i++) {
+    const a = agents[i];
+    if ((stepCount + i) % 3 === 0) updateDir(a);
+    let fx, fy;
+    if (a.go) { fx = (a.v0 * a.ex - a.vx) / TAU; fy = (a.v0 * a.ey - a.vy) / TAU; }
+    else { fx = -a.vx / TAU; fy = -a.vy / TAU; }
+    const hx = Math.floor(a.x), hy = Math.floor(a.y);
+    for (let jy = hy - 1; jy <= hy + 1; jy++) {
+      if (jy < 0 || jy >= hny) continue;
+      for (let jx = hx - 1; jx <= hx + 1; jx++) {
+        if (jx < 0 || jx >= hnx) continue;
+        for (let j = head[jy * hnx + jx]; j >= 0; j = next[j]) {
+          if (j === i) continue;
+          const b = agents[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+          if (d2 > 1) continue;
+          const d = Math.sqrt(d2) || 1e-4, ux = dx / d, uy = dy / d, rs = a.r + b.r;
+          let w = 1;
+          if (a.go) w = LAM + (1 - LAM) * (1 - (ux * a.ex + uy * a.ey)) / 2;
+          let f = A_AG * P.repel * Math.exp((rs - d) / B_AG) * w;
+          if (d < rs) f += K_C * (rs - d);
+          fx += f * ux; fy += f * uy;
+        }
+      }
+    }
+    for (const s of bucket(a.x, a.y)) {
+      if (s.door && s.door.state !== 'closed') continue;
+      const c = closest(a.x, a.y, s), dx = a.x - c[0], dy = a.y - c[1], d = Math.hypot(dx, dy) || 1e-4;
+      if (d > 0.7) continue;
+      let f = A_W * Math.exp((a.r - d) / B_W);
+      if (d < a.r) f += K_C * (a.r - d);
+      fx += f * dx / d; fy += f * dy / d;
+    }
+    a.fx = fx + (Math.random() - .5) * 0.4; a.fy = fy + (Math.random() - .5) * 0.4;
+  }
+  let vsum = 0;
+  const keep = [];
+  for (let i = 0; i < n; i++) {
+    const a = agents[i];
+    a.vx += a.fx * DT; a.vy += a.fy * DT;
+    const sp = Math.hypot(a.vx, a.vy), vmax = 1.6 * a.v0;
+    if (sp > vmax) { a.vx *= vmax / sp; a.vy *= vmax / sp; }
+    const nx = Math.min(W - a.r, Math.max(a.r, a.x + a.vx * DT)), ny = Math.min(H - a.r, Math.max(a.r, a.y + a.vy * DT));
+    if (tryMove(a, nx, ny)) { a.x = nx; a.y = ny; }
+    else if (tryMove(a, nx, a.y)) { a.x = nx; a.vy = 0; }
+    else if (tryMove(a, a.x, ny)) { a.y = ny; a.vx = 0; }
+    else { a.vx = 0; a.vy = 0; }
+    vsum += Math.hypot(a.vx, a.vy);
+    let out = false;
+    for (const ex of nav.exits) {
+      if ((a.target === 'nearest' || a.target === ex.id || !nav.fields.has(a.target)) && inRect(a.x, a.y, ex)) { rt(ex).count++; out = true; break; }
+    }
+    if (out) { stats.left++; stats.lastLeft = simTime; } else keep.push(a);
+  }
+  agents = keep;
+  stats.meanV = n ? vsum / n : 0;
+  simTime += DT; stepCount++;
+  if (stepCount % 5 === 0) computeDensity();
+  if (stepCount % 20 === 0) {
+    hist.push([agents.length, stats.maxD]);
+    if (hist.length > 600) hist = hist.filter((_, i) => i % 2 === 0);
+  }
+}
+function computeDensity() {
+  const nav = NAV, { cs, nx, ny, dens } = nav, R = 1, k = 3 / (Math.PI * R * R), rc = Math.ceil(R / cs);
+  dens.fill(0);
+  for (const a of agents) {
+    const ci = Math.floor(a.x / cs), cj = Math.floor(a.y / cs);
+    for (let j = Math.max(0, cj - rc); j <= Math.min(ny - 1, cj + rc); j++)
+      for (let i = Math.max(0, ci - rc); i <= Math.min(nx - 1, ci + rc); i++) {
+        const d = Math.hypot((i + .5) * cs - a.x, (j + .5) * cs - a.y);
+        if (d < R) dens[j * nx + i] += k * (1 - d / R);
+      }
+  }
+  const P = S.params;
+  let m = 0, area = 0;
+  const img = heatCtx.createImageData(nx, ny), px = img.data;
+  for (let c = 0; c < nav.n; c++) {
+    const d = dens[c];
+    if (d > m) m = d;
+    if (d >= P.warn) area += cs * cs;
+    if (d < 0.3) continue;
+    let r, g, b;
+    if (d <= P.warn) { const u = d / P.warn; r = 74 + u * 176; g = 222 - u * 18; b = 128 - u * 107; }
+    else if (d <= P.crit) { const u = (d - P.warn) / Math.max(0.01, P.crit - P.warn); r = 250 - u * 11; g = 204 - u * 136; b = 21 + u * 47; }
+    else { const u = Math.min(1, (d - P.crit) / (P.crit * 0.5)); r = 239 - u * 113; g = 68 - u * 34; b = 68 + u * 138; }
+    const o = c * 4; px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255 * Math.min(0.72, 0.15 + 0.57 * d / P.crit);
+  }
+  heatCtx.putImageData(img, 0, 0);
+  stats.maxD = m; stats.area = area; if (m > stats.peak) stats.peak = m;
+}
+
+/* ---------- Darstellung ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const heatCv = document.createElement('canvas'), heatCtx = heatCv.getContext('2d');
+let cw = 0, ch = 0, dpr = 1;
+const X = x => view.ox + x * view.s, Y = y => view.oy + y * view.s;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1; cw = r.width; ch = r.height;
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+}
+function fit() {
+  view.s = Math.max(0.5, Math.min((cw - 40) / S.world.w, (ch - 50) / S.world.h));
+  view.ox = (cw - S.world.w * view.s) / 2; view.oy = (ch - S.world.h * view.s) / 2;
+}
+function label(txt, x, y, color = '#0f172a') {
+  ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+function doorColor(it) { return it.state === 'closed' ? '#dc2626' : it.limit > 0 ? '#d97706' : '#16a34a'; }
+function draw() {
+  const s = view.s, W = S.world.w, H = S.world.h;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0c0f13'; ctx.fillRect(0, 0, cw, ch);
+  ctx.fillStyle = '#f4f5f2'; ctx.fillRect(X(0), Y(0), W * s, H * s);
+  if (bgImg && S.bg) { ctx.globalAlpha = S.bg.opacity; ctx.drawImage(bgImg, X(0), Y(0), W * s, H * s); ctx.globalAlpha = 1; }
+  // Raster
+  const gstep = s >= 14 ? 1 : s >= 4 ? 5 : 10;
+  ctx.strokeStyle = 'rgba(15,23,42,.08)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= W; x += gstep) { ctx.moveTo(X(x), Y(0)); ctx.lineTo(X(x), Y(H)); }
+  for (let y = 0; y <= H; y += gstep) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(W), Y(y)); }
+  ctx.stroke();
+  // Flächen
+  for (const it of S.items) {
+    if (it.type === 'exit') { ctx.fillStyle = 'rgba(34,197,94,.28)'; ctx.strokeStyle = '#15803d'; ctx.setLineDash([]); }
+    else if (it.type === 'source') { ctx.fillStyle = 'rgba(59,130,246,.10)'; ctx.strokeStyle = '#2563eb'; ctx.setLineDash([6, 4]); }
+    else continue;
+    ctx.lineWidth = 1.5; ctx.fillRect(X(it.x), Y(it.y), it.w * s, it.h * s); ctx.strokeRect(X(it.x), Y(it.y), it.w * s, it.h * s);
+  }
+  ctx.setLineDash([]);
+  // Heatmap
+  if (S.params.heat && NAV && agents.length) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(heatCv, X(0), Y(0), NAV.nx * NAV.cs * s, NAV.ny * NAV.cs * s);
+  }
+  // Hindernisse
+  for (const it of S.items) if (it.type === 'obstacle') {
+    ctx.fillStyle = '#64748b'; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1.5;
+    ctx.fillRect(X(it.x), Y(it.y), it.w * s, it.h * s); ctx.strokeRect(X(it.x), Y(it.y), it.w * s, it.h * s);
+  }
+  // Wände
+  ctx.strokeStyle = '#1f2937'; ctx.lineWidth = Math.max(2, 0.18 * s); ctx.lineCap = 'round'; ctx.beginPath();
+  for (const it of S.items) if (it.type === 'wall') { ctx.moveTo(X(it.x1), Y(it.y1)); ctx.lineTo(X(it.x2), Y(it.y2)); }
+  ctx.stroke();
+  // Durchgänge
+  for (const it of S.items) if (it.type === 'door') {
+    ctx.strokeStyle = doorColor(it); ctx.lineWidth = Math.max(4, 0.28 * s); ctx.lineCap = 'butt';
+    if (it.state !== 'closed') ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(X(it.x1), Y(it.y1)); ctx.lineTo(X(it.x2), Y(it.y2)); ctx.stroke(); ctx.setLineDash([]);
+    if (it.dir !== 'both' && it.state !== 'closed') {
+      const l = segLen(it) || 1, sg = it.dir === 'fwd' ? 1 : -1;
+      const nx = -(it.y2 - it.y1) / l * sg, ny = (it.x2 - it.x1) / l * sg, mx = X((it.x1 + it.x2) / 2), my = Y((it.y1 + it.y2) / 2);
+      ctx.fillStyle = doorColor(it); ctx.beginPath();
+      ctx.moveTo(mx + nx * 16, my + ny * 16); ctx.lineTo(mx - ny * 7 + nx * 3, my + nx * 7 + ny * 3); ctx.lineTo(mx + ny * 7 + nx * 3, my - nx * 7 + ny * 3);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  // Personen
+  const rad = Math.max(1.6, S.params.radius * s);
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.fillStyle = pass ? '#c026d3' : '#1e3a8a'; ctx.beginPath();
+    for (const a of agents) {
+      const slow = a.vx * a.vx + a.vy * a.vy < (0.25 * a.v0) ** 2;
+      if (slow !== !!pass) continue;
+      const px = X(a.x), py = Y(a.y);
+      ctx.moveTo(px + rad, py); ctx.arc(px, py, rad, 0, 6.2832);
+    }
+    ctx.fill();
+  }
+  // Beschriftungen
+  if (s >= 5) for (const it of S.items) {
+    if (it.type === 'door') label(it.name, X((it.x1 + it.x2) / 2), Y((it.y1 + it.y2) / 2) - 12, doorColor(it));
+    else if (it.type === 'exit') label('Ziel ' + it.name, X(it.x + it.w / 2), Y(it.y + it.h / 2), '#14532d');
+    else if (it.type === 'source' && !agents.length) label(it.name, X(it.x + it.w / 2), Y(it.y + it.h / 2), '#1d4ed8');
+    else if (it.type === 'obstacle' && it.name && it.w * s > 40) label(it.name, X(it.x + it.w / 2), Y(it.y + it.h / 2), '#0f172a');
+  }
+  // Auswahl
+  const sel = getSel();
+  if (sel) {
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+    if (isSeg(sel)) { ctx.beginPath(); ctx.moveTo(X(sel.x1), Y(sel.y1)); ctx.lineTo(X(sel.x2), Y(sel.y2)); ctx.stroke(); }
+    else ctx.strokeRect(X(sel.x) - 2, Y(sel.y) - 2, sel.w * s + 4, sel.h * s + 4);
+    ctx.setLineDash([]);
+    for (const h of handles(sel)) { ctx.fillStyle = '#fff'; ctx.strokeStyle = '#f97316'; ctx.fillRect(X(h.x) - 5, Y(h.y) - 5, 10, 10); ctx.strokeRect(X(h.x) - 5, Y(h.y) - 5, 10, 10); }
+  }
+  // Zeichenvorschau
+  if (drag && drag.kind === 'seg') {
+    ctx.strokeStyle = drag.tool === 'door' ? '#16a34a' : drag.tool === 'measure' ? '#f97316' : '#1f2937'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(X(drag.x1), Y(drag.y1)); ctx.lineTo(X(drag.x2), Y(drag.y2)); ctx.stroke();
+    label(fmt(Math.hypot(drag.x2 - drag.x1, drag.y2 - drag.y1)) + ' m', X((drag.x1 + drag.x2) / 2), Y((drag.y1 + drag.y2) / 2) - 14);
+  } else if (drag && drag.kind === 'rect') {
+    const x = Math.min(drag.x1, drag.x2), y = Math.min(drag.y1, drag.y2), w = Math.abs(drag.x2 - drag.x1), h = Math.abs(drag.y2 - drag.y1);
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2; ctx.strokeRect(X(x), Y(y), w * s, h * s);
+    label(fmt(w) + ' × ' + fmt(h) + ' m', X(x + w / 2), Y(y) - 12);
+  }
+  // Maßstabsbalken
+  const bar = [1, 2, 5, 10, 20, 50, 100].find(m => m * s >= 60) || 100;
+  ctx.fillStyle = '#e2e8f0'; ctx.fillRect(12, 12, bar * s, 4);
+  ctx.font = '11px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(bar + ' m', 12, 20);
+}
+
+/* ---------- Seitenleiste ---------- */
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function getSel() { return selId == null ? null : S.items.find(i => i.id === selId) || null; }
+function renderProps() {
+  const it = getSel(), el = $('#props');
+  if (!it) { el.innerHTML = '<div class="muted">Kein Element ausgewählt. Werkzeug oben wählen und in die Karte zeichnen.</div>'; return; }
+  const row = (lbl, html) => `<div class="row"><label>${lbl}</label>${html}</div>`;
+  const num = (k, min, step) => `<input type="number" data-k="${k}" value="${it[k]}" min="${min}" step="${step}">`;
+  const sel = (k, opts) => `<select data-k="${k}">${opts.map(o => `<option value="${o[0]}"${String(it[k]) === String(o[0]) ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  let h = `<div class="row"><label><b>${LABEL[it.type]}</b></label></div>`;
+  if (it.type !== 'wall') h += row('Name', `<input type="text" data-k="name" value="${esc(it.name || '')}">`);
+  if (it.type === 'door') {
+    h += row('Breite', `<span>${fmt(segLen(it), 2)} m</span>`);
+    h += row('Zustand', sel('state', [['open', 'offen'], ['closed', 'geschlossen']]));
+    h += row('Richtung', sel('dir', [['both', 'beide Richtungen'], ['fwd', 'Einbahn (Pfeil)'], ['rev', 'Einbahn (umgekehrt)']]));
+    h += row('Dosierung (P/min, 0 = frei)', num('limit', 0, 5));
+  } else if (it.type === 'wall') h += row('Länge', `<span>${fmt(segLen(it), 2)} m</span>`);
+  else {
+    h += row('Größe', `<span>${fmt(it.w)} × ${fmt(it.h)} m</span>`);
+    if (it.type === 'source') {
+      h += row('Startbelegung (Personen)', num('initial', 0, 10));
+      h += row('Zustrom (P/min)', num('rate', 0, 5));
+      h += row('Max. Personen gesamt (0 = ∞)', num('max', 0, 10));
+      h += row('Ziel', sel('target', [['nearest', 'nächstes Ziel'], ...S.items.filter(i => i.type === 'exit').map(e => [e.id, 'Ziel ' + e.name])]));
+    }
+  }
+  h += `<div class="btns" style="margin-top:8px"><button class="danger" id="del">Löschen</button></div>`;
+  if (it.type === 'source') h += `<p class="muted">Startbelegung wirkt beim Zurücksetzen.</p>`;
+  el.innerHTML = h;
+}
+$('#props').addEventListener('change', e => {
+  const k = e.target.dataset.k, it = getSel(); if (!k || !it) return;
+  pushUndo();
+  it[k] = e.target.type === 'number' ? Math.max(0, +e.target.value || 0) : e.target.value;
+  changed();
+});
+$('#props').addEventListener('click', e => { if (e.target.id === 'del') deleteSel(); });
+function renderDoors() {
+  const doors = S.items.filter(i => i.type === 'door');
+  let h = '<tr><th>Name</th><th>Zustand</th><th style="text-align:right">P/min</th><th style="text-align:right">gesamt</th></tr>';
+  for (const d of doors) {
+    const r = rt(d); while (r.stamps.length && r.stamps[0] < simTime - 30) r.stamps.shift();
+    h += `<tr><td><span class="dot" style="background:${doorColor(d)}"></span>${esc(d.name)}</td>
+      <td><button data-door="${d.id}">${d.state === 'closed' ? 'zu' : 'offen'}</button></td>
+      <td class="num">${r.stamps.length * 2}</td><td class="num">${r.count}</td></tr>`;
+  }
+  if (!doors.length) h += '<tr><td colspan="4" class="muted">Noch keine Durchgänge.</td></tr>';
+  $('#doors').innerHTML = h;
+}
+$('#doors').addEventListener('pointerdown', e => {
+  const id = e.target.dataset.door; if (!id) return;
+  const d = S.items.find(i => i.id === +id); if (!d) return;
+  pushUndo(); d.state = d.state === 'closed' ? 'open' : 'closed'; changed(); renderDoors();
+});
+function renderStats() {
+  const P = S.params, t = Math.floor(simTime);
+  const mmss = v => Math.floor(v / 60) + ':' + String(Math.floor(v % 60)).padStart(2, '0');
+  $('#k-time').textContent = mmss(t); $('#k-in').textContent = agents.length; $('#k-out').textContent = stats.left;
+  $('#k-v').textContent = agents.length ? fmt(stats.meanV, 2) : '–';
+  $('#k-d').textContent = fmt(stats.maxD); $('#k-dp').textContent = fmt(stats.peak); $('#k-a').textContent = Math.round(stats.area);
+  $('#k-last').textContent = stats.lastLeft == null ? '–' : mmss(stats.lastLeft);
+  const st = $('#status');
+  if (stats.maxD >= P.crit) { st.className = 'crit'; st.textContent = 'Kritisch – Dichte über ' + fmt(P.crit) + ' P/m²'; }
+  else if (stats.maxD >= P.warn) { st.className = 'warn'; st.textContent = 'Warnung – Dichte über ' + fmt(P.warn) + ' P/m²'; }
+  else { st.className = ''; st.textContent = 'Unkritisch'; }
+  // Verlauf
+  const c = $('#chart'), g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (hist.length > 1) {
+    const mx = [Math.max(1, ...hist.map(h => h[0])), Math.max(P.crit, ...hist.map(h => h[1]))];
+    ['#4f9cf9', '#f59e0b'].forEach((col, k) => {
+      g.strokeStyle = col; g.lineWidth = 3; g.beginPath();
+      hist.forEach((h, i) => { const x = 6 + i / (hist.length - 1) * (c.width - 12), y = c.height - 8 - h[k] / mx[k] * (c.height - 16); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+      g.stroke();
+    });
+  }
+  renderDoors();
+}
+function syncInputs() {
+  document.querySelectorAll('[data-p]').forEach(i => { const v = S.params[i.dataset.p]; if (i.type === 'checkbox') i.checked = v; else i.value = v; });
+  $('#repel-v').textContent = '(' + fmt(S.params.repel) + '×)';
+  $('#w-w').value = +S.world.w.toFixed(2); $('#w-h').value = +S.world.h.toFixed(2);
+  $('#bg-op').value = S.bg ? S.bg.opacity : 0.6;
+}
+document.querySelectorAll('[data-p]').forEach(i => i.addEventListener('input', () => {
+  const k = i.dataset.p;
+  S.params[k] = i.type === 'checkbox' ? i.checked : (+i.value || 0);
+  if (k === 'radius') { S.params.radius = Math.min(0.4, Math.max(0.15, S.params.radius)); for (const a of agents) a.r = S.params.radius; }
+  if (k === 'crit' || k === 'warn') S.params.crit = Math.max(S.params.crit, S.params.warn);
+  $('#repel-v').textContent = '(' + fmt(S.params.repel) + '×)';
+  save();
+}));
+
+/* ---------- Bearbeiten ---------- */
+function pushUndo() {
+  const snap = JSON.stringify({ items: S.items, world: S.world, nextId: S.nextId });
+  if (undoStack[undoStack.length - 1] !== snap) { undoStack.push(snap); if (undoStack.length > 60) undoStack.shift(); }
+}
+function undo() {
+  const snap = undoStack.pop(); if (!snap) return;
+  Object.assign(S, JSON.parse(snap)); selId = null; drag = null; changed(); syncInputs(); renderProps();
+}
+function changed() { navDirty = true; save(); }
+let saveTimer = 0;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem('crowd-scenario', JSON.stringify(S)); }
+    catch (e) { try { localStorage.setItem('crowd-scenario', JSON.stringify({ ...S, bg: null })); } catch (e2) {} }
+  }, 400);
+}
+function deleteSel() {
+  const it = getSel(); if (!it) return;
+  pushUndo(); S.items = S.items.filter(i => i !== it); selId = null; changed(); renderProps();
+}
+function handles(it) {
+  if (isSeg(it)) return [{ x: it.x1, y: it.y1, k: 0 }, { x: it.x2, y: it.y2, k: 1 }];
+  return [{ x: it.x, y: it.y, k: 0 }, { x: it.x + it.w, y: it.y, k: 1 }, { x: it.x + it.w, y: it.y + it.h, k: 2 }, { x: it.x, y: it.y + it.h, k: 3 }];
+}
+function hitTest(x, y) {
+  const tol = 8 / view.s;
+  for (const type of ['door', 'wall', 'obstacle', 'exit', 'source'])
+    for (let i = S.items.length - 1; i >= 0; i--) {
+      const it = S.items[i]; if (it.type !== type) continue;
+      if (isSeg(it) ? distSeg(x, y, it) < tol : inRect(x, y, it)) return it;
+    }
+  return null;
+}
+function setTool(t) {
+  tool = t; drag = null;
+  document.querySelectorAll('#tools button').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+  $('#hint').textContent = HINTS[t];
+  cv.style.cursor = t === 'pan' ? 'grab' : t === 'select' ? 'default' : 'crosshair';
+}
+function wpos(e, snapIt = true) {
+  const r = cv.getBoundingClientRect();
+  let x = (e.clientX - r.left - view.ox) / view.s, y = (e.clientY - r.top - view.oy) / view.s;
+  if (snapIt && $('#snap').checked && !e.altKey) { x = Math.round(x * 2) / 2; y = Math.round(y * 2) / 2; }
+  return [x, y];
+}
+const snapV = (v, e) => $('#snap').checked && !e.altKey ? Math.round(v * 2) / 2 : v;
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  if (tool === 'pan' || e.button === 1 || e.button === 2) { drag = { kind: 'pan', px: e.clientX, py: e.clientY, ox: view.ox, oy: view.oy }; return; }
+  const [x, y] = wpos(e), [rx, ry] = wpos(e, false);
+  if (tool === 'select') {
+    const sel = getSel();
+    if (sel) {
+      const h = handles(sel).find(h => Math.hypot(X(h.x) - X(rx), Y(h.y) - Y(ry)) < 9);
+      if (h) { pushUndo(); drag = { kind: 'handle', it: sel, k: h.k, fix: isSeg(sel) ? null : handles(sel)[(h.k + 2) % 4] }; return; }
+    }
+    const it = hitTest(rx, ry);
+    selId = it ? it.id : null; renderProps();
+    if (it) drag = { kind: 'move', it, sx: rx, sy: ry, orig: { ...it }, moved: false };
+    return;
+  }
+  drag = { kind: ['wall', 'door', 'measure'].includes(tool) ? 'seg' : 'rect', tool, x1: x, y1: y, x2: x, y2: y };
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (drag.kind === 'pan') { view.ox = drag.ox + e.clientX - drag.px; view.oy = drag.oy + e.clientY - drag.py; return; }
+  const [x, y] = wpos(e), [rx, ry] = wpos(e, false);
+  if (drag.kind === 'seg' || drag.kind === 'rect') { drag.x2 = x; drag.y2 = y; return; }
+  const it = drag.it;
+  if (drag.kind === 'move') {
+    const dx = snapV(rx - drag.sx, e), dy = snapV(ry - drag.sy, e), o = drag.orig;
+    if (!drag.moved && (dx || dy)) { pushUndo(); drag.moved = true; }
+    if (!drag.moved) return;
+    if (isSeg(it)) { it.x1 = o.x1 + dx; it.y1 = o.y1 + dy; it.x2 = o.x2 + dx; it.y2 = o.y2 + dy; }
+    else { it.x = o.x + dx; it.y = o.y + dy; }
+    navDirty = true;
+  } else if (drag.kind === 'handle') {
+    if (isSeg(it)) { if (drag.k === 0) { it.x1 = x; it.y1 = y; } else { it.x2 = x; it.y2 = y; } }
+    else { const f = drag.fix; it.x = Math.min(f.x, x); it.y = Math.min(f.y, y); it.w = Math.max(0.5, Math.abs(x - f.x)); it.h = Math.max(0.5, Math.abs(y - f.y)); }
+    navDirty = true;
+  }
+});
+cv.addEventListener('pointerup', e => {
+  const d = drag; drag = null; if (!d) return;
+  if (d.kind === 'move' || d.kind === 'handle') { if (d.kind === 'handle' || d.moved) { changed(); renderProps(); } return; }
+  if (d.kind === 'seg') {
+    const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1); if (len < 0.2) return;
+    if (d.tool === 'measure') { calibrate(len); return; }
+    pushUndo();
+    const it = { id: S.nextId++, type: d.tool, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2 };
+    if (d.tool === 'door') Object.assign(it, { name: 'Durchgang ' + (S.items.filter(i => i.type === 'door').length + 1), state: 'open', dir: 'both', limit: 0 });
+    S.items.push(it); selId = it.id;
+  } else if (d.kind === 'rect') {
+    const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2), w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
+    if (w < 0.3 || h < 0.3) return;
+    pushUndo();
+    const cnt = S.items.filter(i => i.type === d.tool).length + 1;
+    const it = { id: S.nextId++, type: d.tool, x, y, w, h, name: d.tool === 'obstacle' ? '' : LABEL[d.tool] + ' ' + cnt };
+    if (d.tool === 'exit') it.name = String(cnt);
+    if (d.tool === 'source') Object.assign(it, { initial: 0, rate: 60, max: 0, target: 'nearest' });
+    S.items.push(it); selId = it.id;
+  }
+  changed(); renderProps();
+});
+function zoomAt(f, px, py) {
+  const ns = Math.min(200, Math.max(0.3, view.s * f)), k = ns / view.s;
+  view.ox = px - (px - view.ox) * k; view.oy = py - (py - view.oy) * k; view.s = ns;
+}
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const r = cv.getBoundingClientRect();
+  zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+$('#zin').onclick = () => zoomAt(1.3, cw / 2, ch / 2);
+$('#zout').onclick = () => zoomAt(1 / 1.3, cw / 2, ch / 2);
+$('#zfit').onclick = fit;
+
+function scaleWorld(f) {
+  S.world.w *= f; S.world.h *= f;
+  for (const it of S.items) {
+    if (isSeg(it)) { it.x1 *= f; it.y1 *= f; it.x2 *= f; it.y2 *= f; }
+    else { it.x *= f; it.y *= f; it.w *= f; it.h *= f; }
+  }
+  for (const a of agents) { a.x *= f; a.y *= f; }
+}
+function calibrate(len) {
+  const v = prompt('Reale Länge der gezogenen Strecke in Metern?\n(aktuell: ' + fmt(len, 2) + ' m)', len.toFixed(2));
+  const real = parseFloat(String(v || '').replace(',', '.'));
+  if (!(real > 0)) return;
+  pushUndo(); scaleWorld(real / len); changed(); syncInputs(); fit(); setTool('select');
+}
+$('#w-w').addEventListener('change', e => {
+  const v = Math.min(1000, Math.max(5, +e.target.value || S.world.w));
+  pushUndo();
+  if (S.bg) scaleWorld(v / S.world.w); else S.world.w = v;   // mit Grundriss bleibt alles deckungsgleich
+  changed(); syncInputs(); fit();
+});
+$('#w-h').addEventListener('change', e => {
+  const v = Math.min(1000, Math.max(5, +e.target.value || S.world.h));
+  pushUndo();
+  if (S.bg) scaleWorld(v / S.world.h); else S.world.h = v;
+  changed(); syncInputs(); fit();
+});
+
+/* ---------- Grundriss / Szenario-Dateien ---------- */
+function loadBg(cb) {
+  bgImg = null;
+  if (!S.bg) { cb && cb(); return; }
+  const im = new Image();
+  im.onload = () => { bgImg = im; cb && cb(im); };
+  im.src = S.bg.data;
+}
+$('#bg-btn').onclick = () => $('#f-bg').click();
+$('#f-bg').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const iw = im.naturalWidth || 2000, ih = im.naturalHeight || 1400, k = Math.min(1, 3000 / Math.max(iw, ih));
+      const c = document.createElement('canvas'); c.width = Math.round(iw * k); c.height = Math.round(ih * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+      pushUndo();
+      S.bg = { data: c.toDataURL('image/jpeg', 0.85), opacity: +$('#bg-op').value || 0.6 };
+      S.world.h = +(S.world.w * ih / iw).toFixed(2);
+      loadBg(() => { changed(); syncInputs(); fit(); });
+    };
+    im.onerror = () => alert('Das Bild konnte nicht gelesen werden. Bitte PNG, JPG oder SVG verwenden (PDF vorher als Bild exportieren).');
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+});
+$('#bg-op').addEventListener('input', e => { if (S.bg) { S.bg.opacity = +e.target.value; save(); } });
+$('#bg-del').onclick = () => { S.bg = null; bgImg = null; save(); };
+$('#save').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' }));
+  a.download = 'crowd-szenario.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#load').onclick = () => $('#f-json').click();
+$('#f-json').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  f.text().then(t => { try { apply(JSON.parse(t)); } catch (err) { alert('Datei ist kein gültiges Szenario.'); } });
+});
+$('#demo').onclick = () => apply(demo());
+$('#clear').onclick = () => { if (confirm('Alle Elemente und den Grundriss entfernen?')) { const s = defaults(); s.world = { ...S.world }; apply(s); } };
+function apply(s) {
+  if (!s || !Array.isArray(s.items) || !s.world) throw new Error('bad');
+  const d = defaults();
+  S = { ...d, ...s, params: { ...d.params, ...(s.params || {}) } };
+  S.nextId = Math.max(S.nextId || 1, 1 + Math.max(0, ...S.items.map(i => i.id || 0)));
+  selId = null; undoStack = []; running = false; $('#play').textContent = '▶ Start';
+  navDirty = true; loadBg(); syncInputs(); renderProps(); resetSim(); fit(); save();
+}
+
+/* ---------- Steuerung ---------- */
+document.querySelectorAll('#tools button').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+function toggleRun() { running = !running; $('#play').textContent = running ? '❚❚ Pause' : '▶ Start'; }
+$('#play').onclick = toggleRun;
+$('#reset').onclick = () => { resetSim(); renderStats(); };
+$('#undo').onclick = undo;
+window.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { deleteSel(); e.preventDefault(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { undo(); e.preventDefault(); }
+  else if (e.key === 'Escape') { drag = null; selId = null; renderProps(); setTool('select'); }
+  else if (e.key === ' ') { toggleRun(); e.preventDefault(); }
+});
+window.addEventListener('resize', () => { resize(); fit(); });
+
+let last = 0, acc = 0, statT = 0;
+function frame(ts) {
+  const fdt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  if (navDirty && !(drag && (drag.kind === 'move' || drag.kind === 'handle'))) buildNav();
+  if (running && NAV) {
+    acc += fdt * +$('#speed').value;
+    let k = 0; const t0 = performance.now();
+    while (acc >= DT && k < 40 && performance.now() - t0 < 30) { step(); acc -= DT; k++; }
+    if (acc > DT * 4) acc = 0;
+  }
+  draw();
+  if (ts - statT > 400) { statT = ts; renderStats(); }
+  requestAnimationFrame(frame);
+}
+
+(function init() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('crowd-scenario')); } catch (e) {}
+  resize();
+  try { apply(s || demo()); } catch (e) { apply(demo()); }
+  setTool('select');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
