@@ -9,8 +9,9 @@ Einfaches Tool im Browser, um Räumungsszenarien für ein oder zwei Räume durch
 ## Funktionen
 
 - **Zwei Räume** nebeneinander (der zweite ist abschaltbar), Größe als Länge × Breite oder als Fläche in m² (wird dann quadratisch).
-- **Türen je Wand** hinzufügen und entfernen, jeweils mit Breite, Position und offen/gesperrt. Türen in der gemeinsamen Wand verbinden die Räume, alle anderen sind Ausgänge.
-- **Hindernisse** frei als Rechtecke einzeichnen, verschieben, skalieren und benennen.
+- **Türen je Wand** hinzufügen und entfernen, jeweils mit Breite, Abstand in Metern ab der West- bzw. Nordecke und offen/gesperrt. Die Karte zeigt die Wandstücke zwischen Ecken und Türen mit Maß. Türen in der gemeinsamen Wand verbinden die Räume, alle anderen sind Ausgänge.
+- **Hindernisse** einzeichnen oder über die Liste anlegen, dort Breite, Tiefe und Position in Metern eingeben und wieder entfernen.
+- **Ausweichen bei Stau**: einstellbarer Anteil der Personen wählt einen anderen Weg, sobald die Dichte auf dem kürzesten Weg eine Schwelle überschreitet.
 - **Bestuhlung**: Blöcke nebeneinander und hintereinander, Reihen pro Block, Stühle pro Reihe, Gangbreite, Belegung in %.
 - **Stehende Personen** je Raum zusätzlich zur Bestuhlung.
 - **Lagebild**: Räumungszeit, Dichte-Heatmap, Spitzendichte, Personen ohne erreichbaren Ausgang.

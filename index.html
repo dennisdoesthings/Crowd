@@ -44,7 +44,12 @@
   .wall span { flex: 1; color: #cfd6e0; }
   .wall button, .door button { padding: 2px 8px; font-size: 12px; }
   .door { display: flex; align-items: center; gap: 6px; margin: 4px 0 4px 10px; font-size: 12.5px; }
-  .door input[type=number] { width: 64px; padding: 3px 6px; }
+  .door input[type=number] { width: 58px; padding: 3px 5px; }
+  .door label { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  .ob { display: flex; align-items: center; gap: 5px; margin: 4px 0; font-size: 12.5px; }
+  .ob input[type=number] { width: 50px; padding: 3px 4px; } .ob input[type=text] { flex: 1; min-width: 0; padding: 3px 6px; }
+  .ob label { color: var(--muted); font-size: 11.5px; } .ob button { padding: 2px 8px; font-size: 12px; }
+  .obx { border-left: 3px solid var(--line); padding-left: 8px; margin: 8px 0; } .obx.sel { border-color: #f97316; }
   .door input[type=range] { flex: 1; min-width: 60px; }
   .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .kpi { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
@@ -126,6 +131,13 @@
     <div id="rooms"></div>
 
     <section>
+      <h2>Hindernisse</h2>
+      <div id="obst"></div>
+      <div class="btns" style="margin-top:6px"><button id="ob-add">+ Hindernis</button></div>
+      <p class="muted">Alle Maße in Metern. X und Y sind der Abstand der linken oberen Hindernisecke von der linken oberen Innenecke von Raum 1.</p>
+    </section>
+
+    <section>
       <h2>Auswahl in der Karte</h2>
       <div id="props"></div>
     </section>
@@ -142,12 +154,14 @@
       <div class="row"><label>Streuung Geschwindigkeit (±)</label><input type="number" data-p="vsd" min="0" max="1" step="0.05"></div>
       <div class="row"><label>Körperradius (m)</label><input type="number" data-p="radius" min="0.15" max="0.4" step="0.01"></div>
       <div class="row"><label>Abstandhalten <span class="muted" id="repel-v"></span></label><input type="range" data-p="repel" min="0.3" max="2.5" step="0.1"></div>
+      <div class="row"><label>Ausweichen bei Stau (% der Personen)</label><input type="number" data-p="reroute" min="0" max="100" step="10"></div>
+      <div class="row"><label>… ab Dichte auf dem Weg (P/m²)</label><input type="number" data-p="rthr" min="0.5" max="5" step="0.5"></div>
       <div class="row"><label>Warnschwelle Dichte (P/m²)</label><input type="number" data-p="warn" min="0.5" max="8" step="0.5"></div>
       <div class="row"><label>Kritische Dichte (P/m²)</label><input type="number" data-p="crit" min="1" max="10" step="0.5"></div>
       <div class="row"><label>Dichte-Heatmap anzeigen</label><input type="checkbox" data-p="heat"></div>
       <div class="legend">
         <span><i style="background:#4ade80"></i>locker</span><span><i style="background:#facc15"></i>Warnschwelle</span>
-        <span><i style="background:#ef4444"></i>kritisch</span><span><i style="background:#1e3a8a"></i>Person</span><span><i style="background:#c026d3"></i>steht</span>
+        <span><i style="background:#ef4444"></i>kritisch</span><span><i style="background:#1e3a8a"></i>nimmt kürzesten Weg</span><span><i style="background:#0d9488"></i>weicht bei Stau aus</span><span><i style="background:#c026d3"></i>steht</span>
       </div>
       <p class="muted">Vereinfachtes Modell zur Veranschaulichung und zum Variantenvergleich – kein Ersatz für ein geprüftes Sicherheits- oder Entfluchtungskonzept.</p>
     </section>
@@ -190,14 +204,14 @@ function newRoom(name, l, w) {
     doors: { N: [], E: [], S: [], W: [] },
     seat: { on: false, bx: 2, by: 1, rows: 8, seats: 10, aisle: 1.5, occ: 100 } };
 }
-const newDoor = (w, pos) => ({ w, pos, state: 'open', dir: 'both', limit: 0 });
+const newDoor = (w, off) => ({ w, off, state: 'open', dir: 'both', limit: 0 });   // off = Abstand der Türkante von der West- bzw. Nordecke der Wand
 function defaults() {
   const a = newRoom('Saal', 20, 15), b = newRoom('Foyer', 12, 15);
   a.seat = { on: true, bx: 2, by: 1, rows: 8, seats: 12, aisle: 2, occ: 100 };
-  a.doors.E = [newDoor(1.8, 15), newDoor(1.8, 85)]; a.doors.S = [newDoor(1.2, 5)];
-  b.persons = 30; b.doors.E = [newDoor(2.4, 50)]; b.doors.S = [newDoor(1.8, 50)];
+  a.doors.E = [newDoor(1.8, 2), newDoor(1.8, 11.2)]; a.doors.S = [newDoor(1.2, 1)];
+  b.persons = 30; b.doors.E = [newDoor(2.4, 6.3)]; b.doors.S = [newDoor(1.8, 5.1)];
   return { version: 2, name: 'Saal mit Foyer', layout: { rooms: [a, b] }, items: [], nextId: 1, world: { w: 40, h: 23 },
-    params: { v0: 1.3, vsd: 0.2, radius: 0.22, repel: 1, warn: 2, crit: 4, heat: true } };
+    params: { v0: 1.3, vsd: 0.2, radius: 0.22, repel: 1, warn: 2, crit: 4, heat: true, reroute: 30, rthr: 1.5 } };
 }
 
 /* ---------- Räume -> Geometrie ---------- */
@@ -226,7 +240,8 @@ function geom() {
 }
 function doorSpan(wall, d) {
   const w = Math.min(d.w, wall.len);
-  return [Math.round((wall.len - w) * d.pos / 100 * 10) / 10, w];
+  const off = d.off != null ? d.off : (wall.len - w) * (d.pos || 0) / 100;
+  return [clamp(Math.round(off * 10) / 10, 0, wall.len - w), w];
 }
 function seatPlan(r, rect) {
   const st = r.seat, bw = st.seats * SEAT, bd = st.rows * PITCH;
@@ -252,7 +267,7 @@ function regen(keepSim) {
     spans.sort((p, q) => p[0] - q[0]);
     let pos = 0;
     for (const [s, e] of spans.concat([[w.len, w.len]])) {
-      if (s > pos + 1e-6) out.push({ id: gid++, gen: true, type: 'wall', x1: w.x1 + ux * pos, y1: w.y1 + uy * pos, x2: w.x1 + ux * s, y2: w.y1 + uy * s });
+      if (s > pos + 1e-6) out.push({ id: gid++, gen: true, type: 'wall', dim: w.doors.length > 0, nx: w.nx, ny: w.ny, x1: w.x1 + ux * pos, y1: w.y1 + uy * pos, x2: w.x1 + ux * s, y2: w.y1 + uy * s });
       pos = Math.max(pos, e);
     }
   }
@@ -284,7 +299,7 @@ function spawnSeats() {
     for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
     const n = Math.round(list.length * clamp(r.seat.occ, 0, 100) / 100), P = S.params;
     for (let i = 0; i < n; i++) {
-      agents.push({ x: list[i].x, y: list[i].y, vx: 0, vy: 0, r: P.radius, v0: Math.max(0.4, P.v0 + gauss() * P.vsd), target: 'nearest', ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
+      agents.push({ x: list[i].x, y: list[i].y, vx: 0, vy: 0, r: P.radius, v0: Math.max(0.4, P.v0 + gauss() * P.vsd), target: pickTarget(), ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
       stats.spawned++;
     }
   });
@@ -382,11 +397,12 @@ function buildNav() {
     all.push(...seeds);
   }
   nav.fields.set('nearest', nav.exits.length === 1 ? nav.fields.get(nav.exits[0].id) : dijkstra(nav, all));
-  nav.dens = new Float32Array(n);
+  nav.fields.set('cong', nav.fields.get('nearest')); nav.allSeeds = all;
+  nav.dens = new Float32Array(n); nav.densAvg = new Float32Array(n);
   NAV = nav; navDirty = false;
   heatCv.width = nx; heatCv.height = ny;
 }
-function dijkstra(nav, seeds) {
+function dijkstra(nav, seeds, mult) {
   const { nx, ny, n, blk, solid, pen, cs } = nav;
   const dist = new Float32Array(n).fill(Infinity);
   const hd = [], hi = [];
@@ -419,7 +435,7 @@ function dijkstra(nav, seeds) {
       if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
       const nb = j * nx + i;
       if (solid[nb] || (blk[nb] & (1 << ((d + 4) & 7)))) continue;   // Bewegung nb -> c muss erlaubt sein
-      const nd = Math.fround(dTop + (d & 1 ? 1.41421 : 1) * cs * 0.5 * (pen[c] + pen[nb]));
+      const nd = Math.fround(dTop + (d & 1 ? 1.41421 : 1) * cs * 0.5 * (mult ? pen[c] * mult[c] + pen[nb] * mult[nb] : pen[c] + pen[nb]));
       if (nd < dist[nb]) { dist[nb] = nd; push(nd, nb); }
     }
   }
@@ -450,7 +466,7 @@ function spawnIn(src) {
     for (const a of agents) { const dx = a.x - x, dy = a.y - y; if (dx * dx + dy * dy < min2) { free = false; break; } }
     if (!free) continue;
     agents.push({ x, y, vx: 0, vy: 0, r, v0: Math.max(0.4, P.v0 + gauss() * P.vsd),
-      target: src.target === 'nearest' ? 'nearest' : +src.target, ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
+      target: pickTarget(), ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
     rt(src).spawned++; stats.spawned++;
     return true;
   }
@@ -569,7 +585,7 @@ function step() {
     vsum += Math.hypot(a.vx, a.vy);
     let out = false;
     for (const ex of nav.exits) {
-      if ((a.target === 'nearest' || a.target === ex.id || !nav.fields.has(a.target)) && inRect(a.x, a.y, ex)) { rt(ex).count++; out = true; break; }
+      if ((a.target === 'nearest' || a.target === 'cong' || a.target === ex.id || !nav.fields.has(a.target)) && inRect(a.x, a.y, ex)) { rt(ex).count++; out = true; break; }
     }
     if (out) { stats.left++; stats.lastLeft = simTime; } else keep.push(a);
   }
@@ -577,11 +593,21 @@ function step() {
   stats.meanV = n ? vsum / n : 0;
   simTime += DT; stepCount++;
   if (stepCount % 5 === 0) computeDensity();
+  if (stepCount % 20 === 0) updateCong();
   if (stepCount % 20 === 0) {
     hist.push([agents.length, stats.maxD]);
     if (hist.length > 600) hist = hist.filter((_, i) => i % 2 === 0);
   }
 }
+// Stau-Ausweichen: Wegekosten steigen mit der (geglätteten) Dichte, ausweichbereite Personen folgen diesem Feld
+function updateCong() {
+  const nav = NAV, P = S.params;
+  if (!(P.reroute > 0) || !nav.allSeeds.length) return;
+  const avg = nav.densAvg, mult = new Float32Array(nav.n);
+  for (let c = 0; c < nav.n; c++) { avg[c] = 0.5 * avg[c] + 0.5 * nav.dens[c]; mult[c] = 1 + 2 * Math.max(0, avg[c] - P.rthr); }
+  nav.fields.set('cong', dijkstra(nav, nav.allSeeds, mult));
+}
+const pickTarget = () => Math.random() * 100 < S.params.reroute ? 'cong' : 'nearest';
 function computeDensity() {
   const nav = NAV, { cs, nx, ny, dens } = nav, R = 1, k = 3 / (Math.PI * R * R), rc = Math.ceil(R / cs);
   dens.fill(0);
@@ -679,11 +705,11 @@ function draw() {
     }
   }
   const rad = Math.max(1.6, S.params.radius * s);
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.fillStyle = pass ? '#c026d3' : '#1e3a8a'; ctx.beginPath();
+  for (let pass = 0; pass < 3; pass++) {
+    ctx.fillStyle = ['#1e3a8a', '#0d9488', '#c026d3'][pass]; ctx.beginPath();
     for (const a of agents) {
       const slow = a.vx * a.vx + a.vy * a.vy < (0.25 * a.v0) ** 2;
-      if (slow !== !!pass) continue;
+      if ((slow ? 2 : a.target === 'cong' ? 1 : 0) !== pass) continue;
       const px = X(a.x), py = Y(a.y);
       ctx.moveTo(px + rad, py); ctx.arc(px, py, rad, 0, 6.2832);
     }
@@ -695,7 +721,12 @@ function draw() {
     if (it.type === 'door') {
       const vert = Math.abs(it.x2 - it.x1) < 0.01, mx = X((it.x1 + it.x2) / 2), my = Y((it.y1 + it.y2) / 2);
       label((it.state === 'closed' ? 'gesperrt' : fmt(segLen(it)) + ' m'), mx + (vert ? 26 : 0), my + (vert ? 0 : -13), doorColor(it));
-    } else if (it.type === 'obstacle' && it.name && it.w * s > 40) label(it.name, X(it.x + it.w / 2), Y(it.y + it.h / 2));
+    } else if (it.type === 'wall' && it.dim && segLen(it) * s > 34) {
+      label(fmt(segLen(it)) + ' m', X((it.x1 + it.x2) / 2) + it.nx * 24, Y((it.y1 + it.y2) / 2) + it.ny * 13, '#64748b', 10.5);
+    } else if (it.type === 'obstacle' && !it.chairs && it.w * s > 30) {
+      const dm = fmt(it.w) + ' × ' + fmt(it.h) + ' m', cx = X(it.x + it.w / 2), cy = Y(it.y + it.h / 2);
+      if (it.name && it.h * s > 30) { label(it.name, cx, cy - 7); label(dm, cx, cy + 7, '#334155', 10); } else label(it.name && it.w * s < 70 ? it.name : dm, cx, cy, '#0f172a', 10.5);
+    }
   }
   const sel = getSel();
   if (sel) {
@@ -740,13 +771,15 @@ function renderRooms() {
     h += `<h3>Türen</h3>`;
     for (const w of g.walls.filter(w => w.ri === ri)) {
       const ttl = WALLN[w.key] + (w.outer ? '' : ' (zu Raum 2)');
+      const corner = w.ny ? 'West' : 'Nord';
       h += `<div class="wall"><span>${ttl} · ${fmt(w.len)} m</span><button ${a} data-add="${w.key}">+ Tür</button></div>`;
       w.doors.forEach((d, di) => {
-        const da = `${a} data-w="${w.key}" data-d="${di}"`;
-        h += `<div class="door"><input type="number" ${da} data-f="w" value="${d.w}" min="0.6" max="20" step="0.1" title="Türbreite in m">m
-          <input type="range" ${da} data-f="pos" value="${d.pos}" min="0" max="100" title="Position entlang der Wand">
+        const da = `${a} data-w="${w.key}" data-d="${di}"`, [off, dw] = doorSpan(w, d), mx = (w.len - dw).toFixed(1);
+        h += `<div class="door"><label>breit</label><input type="number" ${da} data-f="w" value="${d.w}" min="0.6" max="20" step="0.1" title="Türbreite in m">
+          <label>ab ${corner}ecke</label><input type="number" ${da} data-f="off" value="${off}" min="0" max="${mx}" step="0.1" title="Abstand der Türkante von der ${corner}ecke in m">m
           <label><input type="checkbox" ${da} data-f="open"${d.state !== 'closed' ? ' checked' : ''}> offen</label>
-          <button ${da} data-del="1" title="Tür entfernen">✕</button></div>`;
+          <button ${da} data-del="1" title="Tür entfernen">✕</button></div>
+          <div class="door"><input type="range" ${da} data-f="off" value="${off}" min="0" max="${mx}" step="0.1"><span class="muted">noch ${fmt(w.len - off - dw)} m bis zur anderen Ecke</span></div>`;
       });
     }
     if (ri === 1) h += `<div class="muted" style="margin-top:6px">West ist die Verbindungswand – Türen dort unter Raum 1 „Ost“.</div>`;
@@ -779,9 +812,11 @@ function roomEvent(e, live) {
       if (it) it.state = d.state;
       navDirty = true; save(); renderProps(); return;
     }
-    if (live && ds.f !== 'pos') return;
+    if (live && t.type !== 'range') return;
     if (!live) pushUndo();
-    d[ds.f] = ds.f === 'w' ? clamp(+t.value || 1, 0.6, 20) : clamp(+t.value || 0, 0, 100);
+    if (ds.f === 'w') d.w = clamp(+t.value || 1, 0.6, 20); else { d.off = clamp(+t.value || 0, 0, 100); delete d.pos; }
+    if (live) { const row = t.parentElement, n = row.previousElementSibling.querySelector('[data-f="off"]'), w = geom().walls.find(w => w.ri === ri && w.key === ds.w);
+      if (n) n.value = d.off; if (w) row.querySelector('span').textContent = 'noch ' + fmt(w.len - d.off - Math.min(d.w, w.len)) + ' m bis zur anderen Ecke'; }
     regen(); if (!live) renderRooms(); return;
   }
   if (live) return;
@@ -806,10 +841,38 @@ $('#rooms').addEventListener('click', e => {
   const ds = e.target.dataset; if (e.target.tagName !== 'BUTTON' || ds.r == null) return;
   const r = S.layout.rooms[+ds.r];
   pushUndo();
-  if (ds.add) r.doors[ds.add].push(newDoor(1.2, r.doors[ds.add].length ? 100 : 50));
+  if (ds.add) { const w = geom().walls.find(w => w.ri === +ds.r && w.key === ds.add); r.doors[ds.add].push(newDoor(1.2, Math.round((w.len - 1.2) / 2 * 10) / 10)); }
   else if (ds.del) r.doors[ds.w].splice(+ds.d, 1);
   regen(); renderRooms();
 });
+
+/* ---------- Hindernisliste ---------- */
+function renderObst() {
+  const list = S.items.filter(i => i.type === 'obstacle' && !i.gen);
+  const n = (id, k, v, min) => `<input type="number" data-o="${id}" data-k="${k}" value="${+v.toFixed(2)}" min="${min}" step="0.1">`;
+  $('#obst').innerHTML = list.map(o => `<div class="obx${o.id === selId ? ' sel' : ''}">
+    <div class="ob"><input type="text" data-o="${o.id}" data-k="name" value="${esc(o.name || '')}" placeholder="Bezeichnung"><button data-o="${o.id}" data-del="1" class="danger" title="Hindernis entfernen">✕ entfernen</button></div>
+    <div class="ob"><label>Breite</label>${n(o.id, 'w', o.w, 0.2)}<label>Tiefe</label>${n(o.id, 'h', o.h, 0.2)}<label>X</label>${n(o.id, 'x', o.x - MARGIN, -4)}<label>Y</label>${n(o.id, 'y', o.y - MARGIN, -4)}</div></div>`).join('')
+    || '<div class="muted">Noch keine Hindernisse.</div>';
+}
+$('#obst').addEventListener('change', e => {
+  const ds = e.target.dataset, o = S.items.find(i => i.id === +ds.o); if (!o || !ds.k) return;
+  pushUndo();
+  const v = +e.target.value || 0;
+  if (ds.k === 'name') o.name = e.target.value;
+  else if (ds.k === 'w' || ds.k === 'h') o[ds.k] = clamp(v, 0.2, 100);
+  else o[ds.k] = clamp(v, -MARGIN, 200) + MARGIN;
+  selId = o.id; obstChanged(); renderProps();
+});
+$('#obst').addEventListener('click', e => {
+  const ds = e.target.dataset; if (!ds.del) return;
+  selId = +ds.o; deleteSel();
+});
+$('#ob-add').onclick = () => {
+  pushUndo();
+  const it = { id: S.nextId++, type: 'obstacle', x: MARGIN + 1, y: MARGIN + 1, w: 2, h: 1, name: '' };
+  S.items.push(it); selId = it.id; obstChanged(); renderProps();
+};
 
 /* ---------- Auswahl, Kennzahlen, Ergebnisse ---------- */
 function getSel() { return selId == null ? null : S.items.find(i => i.id === selId) || null; }
@@ -825,8 +888,8 @@ function renderProps() {
     h += row('Richtung', sel('dir', [['both', 'beide Richtungen'], ['fwd', 'Einbahn (Pfeil)'], ['rev', 'Einbahn (umgekehrt)']]));
     h += row('Dosierung (P/min, 0 = frei)', `<input type="number" data-k="limit" value="${it.limit}" min="0" step="5">`);
   } else {
-    h = `<div class="row"><label><b>Hindernis</b></label><span>${fmt(it.w)} × ${fmt(it.h)} m</span></div>`;
-    h += row('Bezeichnung', `<input type="text" data-k="name" value="${esc(it.name || '')}">`);
+    h = `<div class="row"><label><b>Hindernis${it.name ? ' „' + esc(it.name) + '“' : ''}</b></label><span>${fmt(it.w)} × ${fmt(it.h)} m</span></div>`;
+    h += `<div class="muted">Maße und Position oben unter „Hindernisse“ (orange markiert).</div>`;
     h += `<div class="btns" style="margin-top:8px"><button class="danger" id="del">Löschen</button></div>`;
   }
   el.innerHTML = h;
@@ -887,6 +950,7 @@ document.querySelectorAll('[data-p]').forEach(i => i.addEventListener('input', (
   const k = i.dataset.p;
   S.params[k] = i.type === 'checkbox' ? i.checked : (+i.value || 0);
   if (k === 'radius') { S.params.radius = clamp(S.params.radius, 0.15, 0.4); for (const a of agents) a.r = S.params.radius; }
+  if (k === 'reroute') { S.params.reroute = clamp(S.params.reroute, 0, 100); for (const a of agents) a.target = pickTarget(); }
   if (k === 'crit' || k === 'warn') S.params.crit = Math.max(S.params.crit, S.params.warn);
   $('#repel-v').textContent = '(' + fmt(S.params.repel) + '×)';
   save();
@@ -900,14 +964,14 @@ function pushUndo() {
 }
 function undo() {
   const snap = undoStack.pop(); if (!snap) return;
-  S = JSON.parse(snap); selId = null; drag = null; regen(); syncInputs(); renderRooms(); renderProps(); fit();
+  S = JSON.parse(snap); selId = null; drag = null; regen(); syncInputs(); renderRooms(); renderProps(); renderObst(); fit();
 }
 let saveTimer = 0;
 function saveNow() { try { localStorage.setItem('crowd-v2', JSON.stringify({ ...STORE, current: stripped() })); } catch (e) {} }
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
 window.addEventListener('pagehide', saveNow);
 // Vor dem Start werden die Personen neu verteilt, damit niemand im Hindernis steht
-function obstChanged() { navDirty = true; save(); if (!running && simTime === 0) resetSim(); }
+function obstChanged() { navDirty = true; save(); if (!running && simTime === 0) resetSim(); renderObst(); }
 function deleteSel() {
   const it = getSel(); if (!it || it.gen) return;
   pushUndo(); S.items = S.items.filter(i => i !== it); selId = null; obstChanged(); renderProps();
@@ -947,7 +1011,7 @@ cv.addEventListener('pointerdown', e => {
       if (h) { pushUndo(); drag = { kind: 'handle', it: sel, fix: handles(sel)[(h.k + 2) % 4] }; return; }
     }
     const it = hitTest(rx, ry);
-    selId = it ? it.id : null; renderProps();
+    selId = it ? it.id : null; renderProps(); renderObst();
     if (it && !it.gen) drag = { kind: 'move', it, sx: rx, sy: ry, orig: { ...it }, moved: false };
     return;
   }
@@ -998,7 +1062,7 @@ function apply(s) {
   S.layout.rooms[0].on = true;
   S.nextId = 1 + Math.max(0, ...S.items.map(i => i.id || 0));
   selId = null; undoStack = [];
-  regen(); syncInputs(); renderRooms(); renderProps(); renderResults(); fit();
+  regen(); syncInputs(); renderRooms(); renderProps(); renderObst(); renderResults(); fit();
 }
 $('#sc-name').addEventListener('change', e => { S.name = e.target.value.trim() || 'Szenario'; save(); });
 $('#sc-save').onclick = () => {
