@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Räumungssimulation</title>
+<style>
+  :root {
+    --bg: #12161c; --panel: #1a2029; --panel2: #222a35; --line: #313b49;
+    --text: #e6eaf0; --muted: #94a0b1; --accent: #4f9cf9;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0 10px 0 2px; font-weight: 650; white-space: nowrap; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+  button, select, input[type=text], input[type=number] {
+    font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px;
+  }
+  button { cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.active { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+  button.primary { background: #1d4ed8; border-color: #1d4ed8; }
+  button.danger { color: #fca5a5; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stage { flex: 1; position: relative; min-width: 0; background: #0c0f13; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #hint { position: absolute; left: 10px; bottom: 8px; right: 10px; color: #cbd5e1; font-size: 12px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  #zoom button { width: 34px; padding: 5px 0; }
+  aside { width: 370px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); }
+  section { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  section h2 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  section h3 { font-size: 13px; margin: 12px 0 4px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .row label { flex: 1; color: #cfd6e0; }
+  .row input[type=number], .row input[type=text], .row select { width: 140px; }
+  .row input[type=range] { width: 140px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .warnt { color: #fbbf24; font-size: 12px; }
+  .wall { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .wall span { flex: 1; color: #cfd6e0; }
+  .wall button, .door button { padding: 2px 8px; font-size: 12px; }
+  .door { display: flex; align-items: center; gap: 6px; margin: 4px 0 4px 10px; font-size: 12.5px; }
+  .door input[type=number] { width: 64px; padding: 3px 6px; }
+  .door input[type=range] { flex: 1; min-width: 60px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kpi { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
+  .kpi b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 11px; }
+  #status { padding: 6px 8px; border-radius: 6px; font-weight: 600; margin-bottom: 8px; background: #14532d; }
+  #status.warn { background: #78350f; } #status.crit { background: #7f1d1d; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  #chart { width: 100%; height: 80px; background: var(--panel2); border-radius: 6px; display: block; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  @media (max-width: 820px) {
+    main { flex-direction: column; }
+    #stage { flex: none; height: 58vh; }
+    aside { width: 100%; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    body { height: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Räumungssimulation</h1>
+  <button id="play" class="primary">▶ Start</button>
+  <button id="reset">Zurücksetzen</button>
+  <select id="speed" title="Simulationsgeschwindigkeit">
+    <option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option><option value="8">8×</option>
+  </select>
+  <div class="sep"></div>
+  <div class="btns" id="tools">
+    <button data-tool="select" class="active">Auswahl</button>
+    <button data-tool="obstacle">+ Hindernis</button>
+    <button data-tool="pan">Hand</button>
+  </div>
+  <div class="sep"></div>
+  <button id="undo" title="Strg+Z">Rückgängig</button>
+  <label class="muted"><input type="checkbox" id="snap" checked> Raster 0,5 m</label>
+</header>
+
+<main>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="zoom"><button id="zin">+</button><button id="zout">−</button><button id="zfit" title="Einpassen">⤢</button></div>
+    <div id="hint"></div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Lage</h2>
+      <div id="status">Unkritisch</div>
+      <div class="kpis">
+        <div class="kpi"><b id="k-time">0:00</b><span>Zeit</span></div>
+        <div class="kpi"><b id="k-in">0</b><span>Personen noch im Gebäude</span></div>
+        <div class="kpi"><b id="k-out">0</b><span>in Sicherheit</span></div>
+        <div class="kpi"><b id="k-v">–</b><span>⌀ Geschwindigkeit m/s</span></div>
+        <div class="kpi"><b id="k-d">0,0</b><span>max. Dichte P/m²</span></div>
+        <div class="kpi"><b id="k-dp">0,0</b><span>Spitzendichte P/m²</span></div>
+        <div class="kpi"><b id="k-a">0</b><span>Fläche ≥ Warnschwelle m²</span></div>
+        <div class="kpi"><b id="k-stuck">0</b><span>ohne erreichbaren Ausgang</span></div>
+      </div>
+      <div style="margin-top:8px"><canvas id="chart" width="632" height="160"></canvas></div>
+      <div class="legend"><span><i style="background:#4f9cf9"></i>Personen im Gebäude</span><span><i style="background:#f59e0b"></i>max. Dichte</span></div>
+    </section>
+
+    <section>
+      <h2>Szenario</h2>
+      <div class="row"><label>Name</label><input type="text" id="sc-name"></div>
+      <div class="row"><label>Gespeichert</label><select id="sc-list"></select></div>
+      <div class="btns">
+        <button id="sc-save">Speichern</button>
+        <button id="sc-del" class="danger">Löschen</button>
+        <button id="sc-export">Export</button>
+        <button id="sc-import">Import</button>
+      </div>
+    </section>
+
+    <div id="rooms"></div>
+
+    <section>
+      <h2>Auswahl in der Karte</h2>
+      <div id="props"></div>
+    </section>
+
+    <section>
+      <h2>Ergebnisse im Vergleich</h2>
+      <table id="results"></table>
+      <div class="btns" style="margin-top:8px"><button id="res-clear">Ergebnisse leeren</button></div>
+    </section>
+
+    <section>
+      <h2>Crowd-Stellgrößen</h2>
+      <div class="row"><label>Wunschgeschwindigkeit (m/s)</label><input type="number" data-p="v0" min="0.3" max="3" step="0.1"></div>
+      <div class="row"><label>Streuung Geschwindigkeit (±)</label><input type="number" data-p="vsd" min="0" max="1" step="0.05"></div>
+      <div class="row"><label>Körperradius (m)</label><input type="number" data-p="radius" min="0.15" max="0.4" step="0.01"></div>
+      <div class="row"><label>Abstandhalten <span class="muted" id="repel-v"></span></label><input type="range" data-p="repel" min="0.3" max="2.5" step="0.1"></div>
+      <div class="row"><label>Warnschwelle Dichte (P/m²)</label><input type="number" data-p="warn" min="0.5" max="8" step="0.5"></div>
+      <div class="row"><label>Kritische Dichte (P/m²)</label><input type="number" data-p="crit" min="1" max="10" step="0.5"></div>
+      <div class="row"><label>Dichte-Heatmap anzeigen</label><input type="checkbox" data-p="heat"></div>
+      <div class="legend">
+        <span><i style="background:#4ade80"></i>locker</span><span><i style="background:#facc15"></i>Warnschwelle</span>
+        <span><i style="background:#ef4444"></i>kritisch</span><span><i style="background:#1e3a8a"></i>Person</span><span><i style="background:#c026d3"></i>steht</span>
+      </div>
+      <p class="muted">Vereinfachtes Modell zur Veranschaulichung und zum Variantenvergleich – kein Ersatz für ein geprüftes Sicherheits- oder Entfluchtungskonzept.</p>
+    </section>
+  </aside>
+</main>
+
+<input type="file" id="f-json" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const DT = 0.05, TAU = 0.5, A_AG = 6, B_AG = 0.15, K_C = 150, A_W = 10, B_W = 0.1, LAM = 0.35;
+const DIRS = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+const MARGIN = 4, PITCH = 1, SEAT = 0.5;
+const WALLN = { N: 'Nord', E: 'Ost', S: 'Süd', W: 'West' };
+const HINTS = {
+  select: 'Hindernis anklicken und ziehen, Griffe ändern die Größe, Entf löscht. Tür anklicken für Einbahn/Dosierung. Mausrad zoomt, Leertaste startet/pausiert.',
+  obstacle: 'Hindernis: Rechteck in den Raum ziehen (Theke, Bühne, Absperrung, Säule, abgestelltes Material …).',
+  pan: 'Hand: ziehen verschiebt die Ansicht.'
+};
+const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const half = v => Math.round(v * 2) / 2;
+const mmss = v => Math.floor(v / 60) + ':' + String(Math.floor(v % 60)).padStart(2, '0');
+
+/* ---------- Zustand ---------- */
+let S = null;                // aktuelles Szenario
+let STORE = { scenarios: {}, results: [] };
+let GEN = { seats: [], a: null, b: null, warn: [null, null] };
+let agents = [], simTime = 0, running = false, done = false, stepCount = 0;
+let RT = new Map();
+let stats = { spawned: 0, left: 0, peak: 0, maxD: 0, area: 0, lastLeft: null, meanV: 0 };
+let hist = [];
+let NAV = null, navDirty = true;
+let tool = 'select', selId = null, drag = null, undoStack = [];
+let view = { s: 10, ox: 0, oy: 0 };
+
+function newRoom(name, l, w) {
+  return { name, on: true, mode: 'lw', l, w, qm: l * w, persons: 0,
+    doors: { N: [], E: [], S: [], W: [] },
+    seat: { on: false, bx: 2, by: 1, rows: 8, seats: 10, aisle: 1.5, occ: 100 } };
+}
+const newDoor = (w, pos) => ({ w, pos, state: 'open', dir: 'both', limit: 0 });
+function defaults() {
+  const a = newRoom('Saal', 20, 15), b = newRoom('Foyer', 12, 15);
+  a.seat = { on: true, bx: 2, by: 1, rows: 8, seats: 12, aisle: 2, occ: 100 };
+  a.doors.E = [newDoor(1.8, 15), newDoor(1.8, 85)]; a.doors.S = [newDoor(1.2, 5)];
+  b.persons = 30; b.doors.E = [newDoor(2.4, 50)]; b.doors.S = [newDoor(1.8, 50)];
+  return { version: 2, name: 'Saal mit Foyer', layout: { rooms: [a, b] }, items: [], nextId: 1, world: { w: 40, h: 23 },
+    params: { v0: 1.3, vsd: 0.2, radius: 0.22, repel: 1, warn: 2, crit: 4, heat: true } };
+}
+
+/* ---------- Räume -> Geometrie ---------- */
+function dims(r) {
+  if (r.mode === 'qm') { const s = Math.max(3, half(Math.sqrt(r.qm))); return [s, s]; }
+  return [clamp(half(r.l), 3, 100), clamp(half(r.w), 3, 100)];
+}
+function geom() {
+  const [A, B] = S.layout.rooms, [la, ha] = dims(A), a = { x: MARGIN, y: MARGIN, w: la, h: ha };
+  let b = null;
+  const walls = [], solid = [];
+  const add = (ri, key, x1, y1, x2, y2, nx, ny, outer) => walls.push({ ri, key, x1, y1, x2, y2, nx, ny, outer, len: Math.hypot(x2 - x1, y2 - y1), doors: S.layout.rooms[ri].doors[key] });
+  add(0, 'N', a.x, a.y, a.x + a.w, a.y, 0, -1, true);
+  add(0, 'S', a.x, a.y + a.h, a.x + a.w, a.y + a.h, 0, 1, true);
+  add(0, 'W', a.x, a.y, a.x, a.y + a.h, -1, 0, true);
+  if (B.on) {
+    const [lb, hb] = dims(B); b = { x: a.x + a.w, y: MARGIN, w: lb, h: hb };
+    const ov = Math.min(ha, hb);
+    add(0, 'E', b.x, a.y, b.x, a.y + ov, 1, 0, false);
+    if (ha !== hb) solid.push([b.x, a.y + ov, b.x, a.y + Math.max(ha, hb)]);
+    add(1, 'N', b.x, b.y, b.x + b.w, b.y, 0, -1, true);
+    add(1, 'S', b.x, b.y + b.h, b.x + b.w, b.y + b.h, 0, 1, true);
+    add(1, 'E', b.x + b.w, b.y, b.x + b.w, b.y + b.h, 1, 0, true);
+  } else add(0, 'E', a.x + a.w, a.y, a.x + a.w, a.y + a.h, 1, 0, true);
+  return { a, b, walls, solid, W: MARGIN * 2 + la + (b ? b.w : 0), H: MARGIN * 2 + Math.max(ha, b ? b.h : 0) };
+}
+function doorSpan(wall, d) {
+  const w = Math.min(d.w, wall.len);
+  return [Math.round((wall.len - w) * d.pos / 100 * 10) / 10, w];
+}
+function seatPlan(r, rect) {
+  const st = r.seat, bw = st.seats * SEAT, bd = st.rows * PITCH;
+  const tw = st.bx * bw + (st.bx - 1) * st.aisle, td = st.by * bd + (st.by - 1) * st.aisle;
+  return { bw, bd, tw, td, fits: tw <= rect.w - 1 && td <= rect.h - 1, count: st.bx * st.by * st.rows * st.seats };
+}
+// Erzeugt Wände, Türen, Ausgänge, Stuhlreihen und Personenflächen aus den Raumeinstellungen
+function regen(keepSim) {
+  const g = geom(), free = S.items.filter(i => !i.gen), out = [];
+  let did = 100000, gid = 200000;
+  GEN = { seats: [], a: g.a, b: g.b, warn: [null, null] };
+  for (const w of g.walls) {
+    const ux = (w.x2 - w.x1) / w.len, uy = (w.y2 - w.y1) / w.len, spans = [];
+    w.doors.forEach((d, di) => {
+      const [s, dw] = doorSpan(w, d); spans.push([s, s + dw]);
+      const name = (w.outer ? 'Ausgang ' : 'Verbindung ') + (w.outer ? S.layout.rooms[w.ri].name + ' ' + WALLN[w.key] + ' ' : '') + (di + 1);
+      out.push({ id: did++, gen: true, type: 'door', src: [w.ri, w.key, di], name, state: d.state, dir: d.dir, limit: d.limit,
+        x1: w.x1 + ux * s, y1: w.y1 + uy * s, x2: w.x1 + ux * (s + dw), y2: w.y1 + uy * (s + dw) });
+      if (w.outer) out.push({ id: gid++, gen: true, type: 'exit', name,
+        x: w.ny ? w.x1 + s : (w.nx < 0 ? w.x1 - 2 : w.x1 + 0.5), y: w.nx ? w.y1 + s : (w.ny < 0 ? w.y1 - 2 : w.y1 + 0.5),
+        w: w.ny ? dw : 1.5, h: w.nx ? dw : 1.5 });
+    });
+    spans.sort((p, q) => p[0] - q[0]);
+    let pos = 0;
+    for (const [s, e] of spans.concat([[w.len, w.len]])) {
+      if (s > pos + 1e-6) out.push({ id: gid++, gen: true, type: 'wall', x1: w.x1 + ux * pos, y1: w.y1 + uy * pos, x2: w.x1 + ux * s, y2: w.y1 + uy * s });
+      pos = Math.max(pos, e);
+    }
+  }
+  for (const s of g.solid) out.push({ id: gid++, gen: true, type: 'wall', x1: s[0], y1: s[1], x2: s[2], y2: s[3] });
+  [g.a, g.b].forEach((rect, ri) => {
+    if (!rect) return;
+    const r = S.layout.rooms[ri];
+    if (r.persons > 0) out.push({ id: gid++, gen: true, type: 'source', name: r.name, x: rect.x + 0.5, y: rect.y + 0.5, w: rect.w - 1, h: rect.h - 1, initial: r.persons, rate: 0, max: 0, target: 'nearest' });
+    if (!r.seat.on) return;
+    const p = seatPlan(r, rect), st = r.seat;
+    if (!p.fits) { GEN.warn[ri] = 'Bestuhlung passt nicht: benötigt ' + fmt(p.tw + 1) + ' × ' + fmt(p.td + 1) + ' m inkl. Randabstand.'; return; }
+    const x0 = rect.x + half((rect.w - p.tw) / 2), y0 = rect.y + half((rect.h - p.td) / 2);
+    for (let by = 0; by < st.by; by++) for (let bx = 0; bx < st.bx; bx++) for (let k = 0; k < st.rows; k++) {
+      const x = x0 + bx * (p.bw + st.aisle), y = y0 + by * (p.bd + st.aisle) + k * PITCH;
+      out.push({ id: gid++, gen: true, type: 'obstacle', chairs: true, x, y, w: p.bw, h: 0.5 });
+      for (let i = 0; i < st.seats; i++) GEN.seats.push({ ri, x: x + (i + 0.5) * SEAT, y: y + 0.75 });
+    }
+  });
+  S.items = out.concat(free);
+  S.world = { w: g.W, h: g.H };
+  if (selId != null && !S.items.some(i => i.id === selId)) selId = null;
+  navDirty = true; save();
+  if (!keepSim) { setRunning(false); resetSim(); }
+}
+function spawnSeats() {
+  S.layout.rooms.forEach((r, ri) => {
+    const blocked = S.items.filter(i => i.type === 'obstacle' && !i.gen);   // Plätze unter Hindernissen entfallen
+    const list = GEN.seats.filter(s => s.ri === ri && !blocked.some(o => inRect(s.x, s.y, o)));
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+    const n = Math.round(list.length * clamp(r.seat.occ, 0, 100) / 100), P = S.params;
+    for (let i = 0; i < n; i++) {
+      agents.push({ x: list[i].x, y: list[i].y, vx: 0, vy: 0, r: P.radius, v0: Math.max(0.4, P.v0 + gauss() * P.vsd), target: 'nearest', ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
+      stats.spawned++;
+    }
+  });
+}
+
+/* ---------- Geometrie ---------- */
+function segInt(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (Math.abs(d) < 1e-12) return false;
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+  return t >= -1e-9 && t <= 1 + 1e-9 && u >= -1e-9 && u <= 1 + 1e-9;
+}
+function closest(px, py, s) {
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, l2 = dx * dx + dy * dy;
+  let t = l2 ? ((px - s.x1) * dx + (py - s.y1) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return [s.x1 + t * dx, s.y1 + t * dy];
+}
+function distSeg(px, py, s) { const c = closest(px, py, s); return Math.hypot(px - c[0], py - c[1]); }
+const isSeg = it => it.type === 'wall' || it.type === 'door';
+const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+const segLen = it => Math.hypot(it.x2 - it.x1, it.y2 - it.y1);
+
+/* ---------- Navigation (Flussfelder) ---------- */
+function rt(it) {
+  let r = RT.get(it.id);
+  if (!r) { r = { acc: 0, spawned: 0, tokens: 1, count: 0, stamps: [] }; RT.set(it.id, r); }
+  return r;
+}
+// Darf eine Bewegung mit Richtung (mx,my) den Durchgang passieren? (ohne Dosierung)
+function doorAllows(door, seg, mx, my) {
+  if (door.state === 'closed') return false;
+  if (door.dir === 'both') return true;
+  const dot = mx * -(seg.y2 - seg.y1) + my * (seg.x2 - seg.x1);
+  return door.dir === 'fwd' ? dot > 0 : dot < 0;
+}
+function buildNav() {
+  const W = S.world.w, H = S.world.h;
+  let cs = 0.5; while ((W / cs) * (H / cs) > 300000) cs *= 2;
+  const nx = Math.ceil(W / cs), ny = Math.ceil(H / cs), n = nx * ny;
+  const blk = new Uint8Array(n), solid = new Uint8Array(n), pen = new Float32Array(n).fill(1);
+  const segs = [];
+  for (const it of S.items) {
+    if (it.type === 'wall') segs.push({ x1: it.x1, y1: it.y1, x2: it.x2, y2: it.y2, door: null });
+    else if (it.type === 'door') segs.push({ x1: it.x1, y1: it.y1, x2: it.x2, y2: it.y2, door: it });
+    else if (it.type === 'obstacle') {
+      const a = it.x, b = it.y, c = it.x + it.w, d = it.y + it.h;
+      const soft = !!it.chairs;   // Stuhlreihen: nur Kontaktkraft, sonst klemmen Personen im Reihengang
+      segs.push({ x1: a, y1: b, x2: c, y2: b, door: null, soft }, { x1: c, y1: b, x2: c, y2: d, door: null, soft },
+                { x1: c, y1: d, x2: a, y2: d, door: null, soft }, { x1: a, y1: d, x2: a, y2: b, door: null, soft });
+      for (let j = Math.max(0, Math.floor(b / cs)); j < Math.min(ny, Math.ceil(d / cs)); j++)
+        for (let i = Math.max(0, Math.floor(a / cs)); i < Math.min(nx, Math.ceil(c / cs)); i++)
+          if (inRect((i + .5) * cs, (j + .5) * cs, it)) solid[j * nx + i] = 1;
+    }
+  }
+  for (const s of segs) {
+    const full = !s.door || s.door.state === 'closed';
+    if (!full && s.door.dir === 'both') continue;
+    const i0 = Math.max(0, Math.floor(Math.min(s.x1, s.x2) / cs) - 1), i1 = Math.min(nx - 1, Math.floor(Math.max(s.x1, s.x2) / cs) + 1);
+    const j0 = Math.max(0, Math.floor(Math.min(s.y1, s.y2) / cs) - 1), j1 = Math.min(ny - 1, Math.floor(Math.max(s.y1, s.y2) / cs) + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const c = j * nx + i, ax = (i + .5) * cs, ay = (j + .5) * cs;
+      for (let d = 0; d < 4; d++) {
+        const ii = i + DIRS[d][0], jj = j + DIRS[d][1];
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        if (!segInt(ax, ay, (ii + .5) * cs, (jj + .5) * cs, s.x1, s.y1, s.x2, s.y2)) continue;
+        const nb = jj * nx + ii;
+        if (full) { blk[c] |= 1 << d; blk[nb] |= 1 << (d + 4); }
+        else if (doorAllows(s.door, s, DIRS[d][0], DIRS[d][1])) blk[nb] |= 1 << (d + 4);
+        else blk[c] |= 1 << d;
+      }
+      if (full) { // Wandnähe verteuern, damit Wege nicht an Wänden kleben
+        const p = 1 + 3 * Math.max(0, 1 - distSeg(ax, ay, s) / 0.8);
+        if (p > pen[c]) pen[c] = p;
+      }
+    }
+  }
+  // Kollisions-Buckets
+  const bs = 2, bnx = Math.ceil(W / bs) + 1, bny = Math.ceil(H / bs) + 1;
+  const buckets = Array.from({ length: bnx * bny }, () => []);
+  for (const s of segs) {
+    const i0 = Math.max(0, Math.floor((Math.min(s.x1, s.x2) - 1) / bs)), i1 = Math.min(bnx - 1, Math.floor((Math.max(s.x1, s.x2) + 1) / bs));
+    const j0 = Math.max(0, Math.floor((Math.min(s.y1, s.y2) - 1) / bs)), j1 = Math.min(bny - 1, Math.floor((Math.max(s.y1, s.y2) + 1) / bs));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) buckets[j * bnx + i].push(s);
+  }
+  const nav = { cs, nx, ny, n, blk, solid, pen, segs, bs, bnx, bny, buckets, fields: new Map(), exits: S.items.filter(i => i.type === 'exit') };
+  const all = [];
+  for (const ex of nav.exits) {
+    const seeds = [];
+    for (let j = Math.max(0, Math.floor(ex.y / cs)); j < Math.min(ny, Math.ceil((ex.y + ex.h) / cs)); j++)
+      for (let i = Math.max(0, Math.floor(ex.x / cs)); i < Math.min(nx, Math.ceil((ex.x + ex.w) / cs)); i++)
+        if (!solid[j * nx + i] && inRect((i + .5) * cs, (j + .5) * cs, ex)) seeds.push(j * nx + i);
+    nav.fields.set(ex.id, dijkstra(nav, seeds));
+    all.push(...seeds);
+  }
+  nav.fields.set('nearest', nav.exits.length === 1 ? nav.fields.get(nav.exits[0].id) : dijkstra(nav, all));
+  nav.dens = new Float32Array(n);
+  NAV = nav; navDirty = false;
+  heatCv.width = nx; heatCv.height = ny;
+}
+function dijkstra(nav, seeds) {
+  const { nx, ny, n, blk, solid, pen, cs } = nav;
+  const dist = new Float32Array(n).fill(Infinity);
+  const hd = [], hi = [];
+  const push = (d, i) => {
+    let k = hd.length; hd.push(d); hi.push(i);
+    while (k > 0) { const p = (k - 1) >> 1; if (hd[p] <= d) break; hd[k] = hd[p]; hi[k] = hi[p]; k = p; }
+    hd[k] = d; hi[k] = i;
+  };
+  const pop = () => {
+    const top = hi[0], d = hd.pop(), i = hi.pop(), len = hd.length;
+    if (len) {
+      let k = 0;
+      for (;;) {
+        let c = 2 * k + 1; if (c >= len) break;
+        if (c + 1 < len && hd[c + 1] < hd[c]) c++;
+        if (hd[c] >= d) break;
+        hd[k] = hd[c]; hi[k] = hi[c]; k = c;
+      }
+      hd[k] = d; hi[k] = i;
+    }
+    return top;
+  };
+  for (const s of seeds) { dist[s] = 0; push(0, s); }
+  while (hd.length) {
+    const dTop = hd[0], c = pop();
+    if (dTop > dist[c]) continue;
+    const ci = c % nx, cj = (c / nx) | 0;
+    for (let d = 0; d < 8; d++) {
+      const i = ci + DIRS[d][0], j = cj + DIRS[d][1];
+      if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+      const nb = j * nx + i;
+      if (solid[nb] || (blk[nb] & (1 << ((d + 4) & 7)))) continue;   // Bewegung nb -> c muss erlaubt sein
+      const nd = Math.fround(dTop + (d & 1 ? 1.41421 : 1) * cs * 0.5 * (pen[c] + pen[nb]));
+      if (nd < dist[nb]) { dist[nb] = nd; push(nd, nb); }
+    }
+  }
+  return dist;
+}
+function bucket(x, y) {
+  const n = NAV, i = Math.min(n.bnx - 1, Math.max(0, Math.floor(x / n.bs))), j = Math.min(n.bny - 1, Math.max(0, Math.floor(y / n.bs)));
+  return n.buckets[j * n.bnx + i];
+}
+function lineBlocked(ax, ay, bx, by) {
+  for (const s of bucket(ax, ay)) {
+    if (!segInt(ax, ay, bx, by, s.x1, s.y1, s.x2, s.y2)) continue;
+    if (!s.door || !doorAllows(s.door, s, bx - ax, by - ay)) return true;
+  }
+  return false;
+}
+
+/* ---------- Simulation ---------- */
+function gauss() { let u = 0; for (let i = 0; i < 4; i++) u += Math.random(); return (u - 2) * 1.73; }
+function spawnIn(src) {
+  const P = S.params, nav = NAV, r = P.radius, min2 = (2 * r * 0.95) ** 2;
+  for (let t = 0; t < 12; t++) {
+    const x = src.x + Math.random() * src.w, y = src.y + Math.random() * src.h;
+    if (x < r || y < r || x > S.world.w - r || y > S.world.h - r) continue;
+    const ci = Math.floor(x / nav.cs), cj = Math.floor(y / nav.cs);
+    if (ci >= nav.nx || cj >= nav.ny || nav.solid[cj * nav.nx + ci]) continue;
+    let free = true;
+    for (const a of agents) { const dx = a.x - x, dy = a.y - y; if (dx * dx + dy * dy < min2) { free = false; break; } }
+    if (!free) continue;
+    agents.push({ x, y, vx: 0, vy: 0, r, v0: Math.max(0.4, P.v0 + gauss() * P.vsd),
+      target: src.target === 'nearest' ? 'nearest' : +src.target, ex: 0, ey: 0, go: false, fx: 0, fy: 0 });
+    rt(src).spawned++; stats.spawned++;
+    return true;
+  }
+  return false;
+}
+function resetSim() {
+  agents = []; simTime = 0; stepCount = 0; RT = new Map(); hist = [];
+  stats = { spawned: 0, left: 0, peak: 0, maxD: 0, area: 0, lastLeft: null, meanV: 0 };
+  if (navDirty || !NAV) buildNav();
+  spawnSeats(); done = false;
+  for (const it of S.items) if (it.type === 'source')
+    for (let k = 0; k < (it.initial || 0); k++) if (!spawnIn(it)) break;
+  computeDensity();
+}
+function updateDir(a) {
+  const nav = NAV, f = nav.fields.get(a.target) || nav.fields.get('nearest');
+  a.go = false;
+  if (!f) return;
+  const cs = nav.cs, ci = Math.min(nav.nx - 1, Math.floor(a.x / cs)), cj = Math.min(nav.ny - 1, Math.floor(a.y / cs));
+  const c0 = cj * nav.nx + ci, f0 = f[c0], cx = (ci + .5) * cs, cy = (cj + .5) * cs;
+  let best = Infinity, tx = 0, ty = 0;
+  for (let d = 0; d < 8; d++) {
+    const i = ci + DIRS[d][0], j = cj + DIRS[d][1];
+    if (i < 0 || j < 0 || i >= nav.nx || j >= nav.ny) continue;
+    const c = j * nav.nx + i;
+    if (nav.solid[c] || !(f[c] < f0)) continue;      // nur Zellen, die näher am Ziel liegen
+    const px = (i + .5) * cs, py = (j + .5) * cs;
+    const v = f[c] + Math.hypot(px - a.x, py - a.y) * 0.5 * (nav.pen[c] + nav.pen[c0]);
+    if (v < best && !lineBlocked(a.x, a.y, px, py)) { best = v; tx = px; ty = py; }
+  }
+  // Kein direkter Weg (z. B. hinter einer Kante): erst zur Mitte der eigenen Zelle
+  if (best === Infinity && f0 !== Infinity && !nav.solid[c0] && !lineBlocked(a.x, a.y, cx, cy)) { best = f0; tx = cx; ty = cy; }
+  if (best === Infinity) return;
+  const dx = tx - a.x, dy = ty - a.y, l = Math.hypot(dx, dy);
+  if (l < 1e-6) return;
+  a.ex = dx / l; a.ey = dy / l; a.go = true;
+}
+function tryMove(a, nx, ny) {
+  let crossed = null;
+  for (const s of bucket(a.x, a.y)) {
+    if (!segInt(a.x, a.y, nx, ny, s.x1, s.y1, s.x2, s.y2)) continue;
+    if (!s.door) return false;
+    if (!doorAllows(s.door, s, nx - a.x, ny - a.y)) return false;
+    if (s.door.limit > 0 && rt(s.door).tokens < 1) return false;
+    crossed = s.door;
+  }
+  if (crossed) { const r = rt(crossed); if (crossed.limit > 0) r.tokens -= 1; r.count++; r.stamps.push(simTime); }
+  return true;
+}
+function step() {
+  const P = S.params, nav = NAV, W = S.world.w, H = S.world.h;
+  for (const it of S.items) {
+    if (it.type === 'source' && it.rate > 0) {
+      const r = rt(it); r.acc += it.rate / 60 * DT;
+      while (r.acc >= 1) {
+        if (it.max > 0 && r.spawned >= it.max) { r.acc = 0; break; }
+        if (!spawnIn(it)) { r.acc = Math.min(r.acc, 5); break; }
+        r.acc -= 1;
+      }
+    } else if (it.type === 'door' && it.limit > 0) {
+      const r = rt(it); r.tokens = Math.min(1.5, r.tokens + it.limit / 60 * DT);
+    }
+  }
+  const n = agents.length, hnx = Math.ceil(W) + 1, hny = Math.ceil(H) + 1;
+  const head = new Int32Array(hnx * hny).fill(-1), next = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = agents[i], c = Math.floor(a.y) * hnx + Math.floor(a.x);
+    next[i] = head[c]; head[c] = i;
+  }
+  for (let i = 0; i < n; i++) {
+    const a = agents[i];
+    if ((stepCount + i) % 3 === 0) updateDir(a);
+    let fx, fy;
+    if (a.go) { fx = (a.v0 * a.ex - a.vx) / TAU; fy = (a.v0 * a.ey - a.vy) / TAU; }
+    else { fx = -a.vx / TAU; fy = -a.vy / TAU; }
+    const hx = Math.floor(a.x), hy = Math.floor(a.y);
+    for (let jy = hy - 1; jy <= hy + 1; jy++) {
+      if (jy < 0 || jy >= hny) continue;
+      for (let jx = hx - 1; jx <= hx + 1; jx++) {
+        if (jx < 0 || jx >= hnx) continue;
+        for (let j = head[jy * hnx + jx]; j >= 0; j = next[j]) {
+          if (j === i) continue;
+          const b = agents[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+          if (d2 > 1) continue;
+          const d = Math.sqrt(d2) || 1e-4, ux = dx / d, uy = dy / d, rs = a.r + b.r;
+          let w = 1;
+          if (a.go) w = LAM + (1 - LAM) * (1 - (ux * a.ex + uy * a.ey)) / 2;
+          let f = A_AG * P.repel * Math.exp((rs - d) / B_AG) * w;
+          if (d < rs) f += K_C * (rs - d);
+          fx += f * ux; fy += f * uy;
+        }
+      }
+    }
+    for (const s of bucket(a.x, a.y)) {
+      if (s.door && s.door.state !== 'closed') continue;
+      const c = closest(a.x, a.y, s), dx = a.x - c[0], dy = a.y - c[1], d = Math.hypot(dx, dy) || 1e-4;
+      if (d > 0.7) continue;
+      let f = s.soft ? 0 : A_W * Math.exp((a.r - d) / B_W);
+      if (d < a.r) f += K_C * (a.r - d);
+      fx += f * dx / d; fy += f * dy / d;
+    }
+    a.fx = fx + (Math.random() - .5) * 0.4; a.fy = fy + (Math.random() - .5) * 0.4;
+  }
+  let vsum = 0;
+  const keep = [];
+  for (let i = 0; i < n; i++) {
+    const a = agents[i];
+    a.vx += a.fx * DT; a.vy += a.fy * DT;
+    const sp = Math.hypot(a.vx, a.vy), vmax = 1.6 * a.v0;
+    if (sp > vmax) { a.vx *= vmax / sp; a.vy *= vmax / sp; }
+    const nx = Math.min(W - a.r, Math.max(a.r, a.x + a.vx * DT)), ny = Math.min(H - a.r, Math.max(a.r, a.y + a.vy * DT));
+    if (tryMove(a, nx, ny)) { a.x = nx; a.y = ny; }
+    else if (tryMove(a, nx, a.y)) { a.x = nx; a.vy = 0; }
+    else if (tryMove(a, a.x, ny)) { a.y = ny; a.vx = 0; }
+    else { a.vx = 0; a.vy = 0; }
+    vsum += Math.hypot(a.vx, a.vy);
+    let out = false;
+    for (const ex of nav.exits) {
+      if ((a.target === 'nearest' || a.target === ex.id || !nav.fields.has(a.target)) && inRect(a.x, a.y, ex)) { rt(ex).count++; out = true; break; }
+    }
+    if (out) { stats.left++; stats.lastLeft = simTime; } else keep.push(a);
+  }
+  agents = keep;
+  stats.meanV = n ? vsum / n : 0;
+  simTime += DT; stepCount++;
+  if (stepCount % 5 === 0) computeDensity();
+  if (stepCount % 20 === 0) {
+    hist.push([agents.length, stats.maxD]);
+    if (hist.length > 600) hist = hist.filter((_, i) => i % 2 === 0);
+  }
+}
+function computeDensity() {
+  const nav = NAV, { cs, nx, ny, dens } = nav, R = 1, k = 3 / (Math.PI * R * R), rc = Math.ceil(R / cs);
+  dens.fill(0);
+  for (const a of agents) {
+    const ci = Math.floor(a.x / cs), cj = Math.floor(a.y / cs);
+    for (let j = Math.max(0, cj - rc); j <= Math.min(ny - 1, cj + rc); j++)
+      for (let i = Math.max(0, ci - rc); i <= Math.min(nx - 1, ci + rc); i++) {
+        const d = Math.hypot((i + .5) * cs - a.x, (j + .5) * cs - a.y);
+        if (d < R) dens[j * nx + i] += k * (1 - d / R);
+      }
+  }
+  const P = S.params;
+  let m = 0, area = 0;
+  const img = heatCtx.createImageData(nx, ny), px = img.data;
+  for (let c = 0; c < nav.n; c++) {
+    const d = dens[c];
+    if (d > m) m = d;
+    if (d >= P.warn) area += cs * cs;
+    if (d < 0.3) continue;
+    let r, g, b;
+    if (d <= P.warn) { const u = d / P.warn; r = 74 + u * 176; g = 222 - u * 18; b = 128 - u * 107; }
+    else if (d <= P.crit) { const u = (d - P.warn) / Math.max(0.01, P.crit - P.warn); r = 250 - u * 11; g = 204 - u * 136; b = 21 + u * 47; }
+    else { const u = Math.min(1, (d - P.crit) / (P.crit * 0.5)); r = 239 - u * 113; g = 68 - u * 34; b = 68 + u * 138; }
+    const o = c * 4; px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255 * Math.min(0.72, 0.15 + 0.57 * d / P.crit);
+  }
+  heatCtx.putImageData(img, 0, 0);
+  stats.maxD = m; stats.area = area; if (m > stats.peak) stats.peak = m;
+}
+
+
+/* ---------- Darstellung ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const heatCv = document.createElement('canvas'), heatCtx = heatCv.getContext('2d');
+let cw = 0, ch = 0, dpr = 1;
+const X = x => view.ox + x * view.s, Y = y => view.oy + y * view.s;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1; cw = r.width; ch = r.height;
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+}
+function fit() {
+  view.s = Math.max(0.5, Math.min((cw - 30) / S.world.w, (ch - 40) / S.world.h));
+  view.ox = (cw - S.world.w * view.s) / 2; view.oy = (ch - S.world.h * view.s) / 2;
+}
+function label(txt, x, y, color = '#0f172a', size = 11, align = 'center') {
+  ctx.font = '600 ' + size + 'px system-ui, sans-serif'; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+function doorColor(it) { return it.state === 'closed' ? '#dc2626' : it.limit > 0 ? '#d97706' : '#16a34a'; }
+function draw() {
+  const s = view.s, W = S.world.w, H = S.world.h;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0c0f13'; ctx.fillRect(0, 0, cw, ch);
+  ctx.fillStyle = '#dfe3e8'; ctx.fillRect(X(0), Y(0), W * s, H * s);
+  for (const r of [GEN.a, GEN.b]) if (r) { ctx.fillStyle = '#f7f7f4'; ctx.fillRect(X(r.x), Y(r.y), r.w * s, r.h * s); }
+  const gstep = s >= 14 ? 1 : 5;
+  ctx.strokeStyle = 'rgba(15,23,42,.07)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= W; x += gstep) { ctx.moveTo(X(x), Y(0)); ctx.lineTo(X(x), Y(H)); }
+  for (let y = 0; y <= H; y += gstep) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(W), Y(y)); }
+  ctx.stroke();
+  for (const it of S.items) if (it.type === 'exit') {
+    ctx.fillStyle = 'rgba(34,197,94,.35)'; ctx.fillRect(X(it.x), Y(it.y), it.w * s, it.h * s);
+  }
+  // Stuhlreihen
+  for (const it of S.items) if (it.type === 'obstacle' && it.chairs) {
+    ctx.fillStyle = '#9aa7ba'; ctx.fillRect(X(it.x), Y(it.y), it.w * s, it.h * s);
+    if (s >= 8) {
+      ctx.strokeStyle = '#f7f7f4'; ctx.lineWidth = 1; ctx.beginPath();
+      for (let x = it.x + SEAT; x < it.x + it.w - 0.01; x += SEAT) { ctx.moveTo(X(x), Y(it.y)); ctx.lineTo(X(x), Y(it.y + it.h)); }
+      ctx.stroke();
+    }
+  }
+  if (S.params.heat && NAV && agents.length) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(heatCv, X(0), Y(0), NAV.nx * NAV.cs * s, NAV.ny * NAV.cs * s);
+  }
+  for (const it of S.items) if (it.type === 'obstacle' && !it.chairs) {
+    ctx.fillStyle = '#64748b'; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1.5;
+    ctx.fillRect(X(it.x), Y(it.y), it.w * s, it.h * s); ctx.strokeRect(X(it.x), Y(it.y), it.w * s, it.h * s);
+  }
+  ctx.strokeStyle = '#1f2937'; ctx.lineWidth = Math.max(3, 0.2 * s); ctx.lineCap = 'round'; ctx.beginPath();
+  for (const it of S.items) if (it.type === 'wall') { ctx.moveTo(X(it.x1), Y(it.y1)); ctx.lineTo(X(it.x2), Y(it.y2)); }
+  ctx.stroke();
+  for (const it of S.items) if (it.type === 'door') {
+    ctx.strokeStyle = doorColor(it); ctx.lineWidth = Math.max(4, 0.28 * s); ctx.lineCap = 'butt';
+    if (it.state !== 'closed') ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(X(it.x1), Y(it.y1)); ctx.lineTo(X(it.x2), Y(it.y2)); ctx.stroke(); ctx.setLineDash([]);
+    if (it.dir !== 'both' && it.state !== 'closed') {
+      const l = segLen(it) || 1, sg = it.dir === 'fwd' ? 1 : -1;
+      const nx = -(it.y2 - it.y1) / l * sg, ny = (it.x2 - it.x1) / l * sg, mx = X((it.x1 + it.x2) / 2), my = Y((it.y1 + it.y2) / 2);
+      ctx.fillStyle = doorColor(it); ctx.beginPath();
+      ctx.moveTo(mx + nx * 16, my + ny * 16); ctx.lineTo(mx - ny * 7 + nx * 3, my + nx * 7 + ny * 3); ctx.lineTo(mx + ny * 7 + nx * 3, my - nx * 7 + ny * 3);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  const rad = Math.max(1.6, S.params.radius * s);
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.fillStyle = pass ? '#c026d3' : '#1e3a8a'; ctx.beginPath();
+    for (const a of agents) {
+      const slow = a.vx * a.vx + a.vy * a.vy < (0.25 * a.v0) ** 2;
+      if (slow !== !!pass) continue;
+      const px = X(a.x), py = Y(a.y);
+      ctx.moveTo(px + rad, py); ctx.arc(px, py, rad, 0, 6.2832);
+    }
+    ctx.fill();
+  }
+  // Beschriftungen
+  [GEN.a, GEN.b].forEach((r, ri) => { if (r) label(S.layout.rooms[ri].name + ' · ' + fmt(r.w) + ' × ' + fmt(r.h) + ' m = ' + Math.round(r.w * r.h) + ' m²', X(r.x) + 8, Y(r.y) + 14, '#475569', 12, 'left'); });
+  if (s >= 5) for (const it of S.items) {
+    if (it.type === 'door') {
+      const vert = Math.abs(it.x2 - it.x1) < 0.01, mx = X((it.x1 + it.x2) / 2), my = Y((it.y1 + it.y2) / 2);
+      label((it.state === 'closed' ? 'gesperrt' : fmt(segLen(it)) + ' m'), mx + (vert ? 26 : 0), my + (vert ? 0 : -13), doorColor(it));
+    } else if (it.type === 'obstacle' && it.name && it.w * s > 40) label(it.name, X(it.x + it.w / 2), Y(it.y + it.h / 2));
+  }
+  const sel = getSel();
+  if (sel) {
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+    if (isSeg(sel)) { ctx.beginPath(); ctx.moveTo(X(sel.x1), Y(sel.y1)); ctx.lineTo(X(sel.x2), Y(sel.y2)); ctx.stroke(); }
+    else ctx.strokeRect(X(sel.x) - 2, Y(sel.y) - 2, sel.w * s + 4, sel.h * s + 4);
+    ctx.setLineDash([]);
+    if (!sel.gen) for (const h of handles(sel)) { ctx.fillStyle = '#fff'; ctx.strokeStyle = '#f97316'; ctx.fillRect(X(h.x) - 5, Y(h.y) - 5, 10, 10); ctx.strokeRect(X(h.x) - 5, Y(h.y) - 5, 10, 10); }
+  }
+  if (drag && drag.kind === 'rect') {
+    const x = Math.min(drag.x1, drag.x2), y = Math.min(drag.y1, drag.y2), w = Math.abs(drag.x2 - drag.x1), h = Math.abs(drag.y2 - drag.y1);
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 2; ctx.strokeRect(X(x), Y(y), w * s, h * s);
+    label(fmt(w) + ' × ' + fmt(h) + ' m', X(x + w / 2), Y(y) - 12);
+  }
+  // Zeit / Ergebnis
+  const txt = done ? 'Geräumt in ' + mmss(stats.lastLeft) + ' min · ' + stats.left + ' Personen' : mmss(simTime) + ' · noch ' + agents.length + ' Personen';
+  ctx.font = '600 15px system-ui, sans-serif';
+  const tw = ctx.measureText(txt).width + 24;
+  ctx.fillStyle = done ? '#15803d' : 'rgba(15,23,42,.85)'; ctx.fillRect(cw / 2 - tw / 2, 8, tw, 30);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, cw / 2, 23);
+  const bar = [1, 2, 5, 10, 20, 50].find(m => m * s >= 60) || 50;
+  ctx.fillStyle = '#e2e8f0'; ctx.fillRect(12, 12, bar * s, 4);
+  ctx.font = '11px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(bar + ' m', 12, 20);
+}
+
+/* ---------- Raum-Einstellungen ---------- */
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function renderRooms() {
+  const g = geom(), act = document.activeElement, key = act && act.dataset && act.closest('#rooms') ? JSON.stringify(act.dataset) : null;
+  $('#rooms').innerHTML = S.layout.rooms.map((r, ri) => {
+    let h = `<section><h2>Raum ${ri + 1}</h2>`;
+    if (ri === 1) h += `<div class="row"><label>Zweiten Raum verwenden</label><input type="checkbox" data-r="1" data-k="on"${r.on ? ' checked' : ''}></div>`;
+    if (ri === 1 && !r.on) return h + '</section>';
+    const rect = ri ? g.b : g.a, a = `data-r="${ri}"`;
+    const num = (attr, v, min, max, step) => `<input type="number" ${a} ${attr} value="${v}" min="${min}" max="${max}" step="${step}">`;
+    h += `<div class="row"><label>Name</label><input type="text" ${a} data-k="name" value="${esc(r.name)}"></div>`;
+    h += `<div class="row"><label>Größe angeben als</label><select ${a} data-k="mode"><option value="lw"${r.mode === 'lw' ? ' selected' : ''}>Länge × Breite</option><option value="qm"${r.mode === 'qm' ? ' selected' : ''}>Fläche (Quadrat)</option></select></div>`;
+    if (r.mode === 'lw') h += `<div class="row"><label>Länge (m)</label>${num('data-k="l"', r.l, 3, 100, 0.5)}</div><div class="row"><label>Breite (m)</label>${num('data-k="w"', r.w, 3, 100, 0.5)}</div>`;
+    else h += `<div class="row"><label>Fläche (m²)</label>${num('data-k="qm"', r.qm, 9, 10000, 1)}</div>`;
+    h += `<div class="muted">= ${fmt(rect.w)} × ${fmt(rect.h)} m, ${Math.round(rect.w * rect.h)} m² (auf 0,5 m gerundet)</div>`;
+    h += `<div class="row"><label>Stehende Personen</label>${num('data-k="persons"', r.persons, 0, 5000, 10)}</div>`;
+    h += `<h3>Türen</h3>`;
+    for (const w of g.walls.filter(w => w.ri === ri)) {
+      const ttl = WALLN[w.key] + (w.outer ? '' : ' (zu Raum 2)');
+      h += `<div class="wall"><span>${ttl} · ${fmt(w.len)} m</span><button ${a} data-add="${w.key}">+ Tür</button></div>`;
+      w.doors.forEach((d, di) => {
+        const da = `${a} data-w="${w.key}" data-d="${di}"`;
+        h += `<div class="door"><input type="number" ${da} data-f="w" value="${d.w}" min="0.6" max="20" step="0.1" title="Türbreite in m">m
+          <input type="range" ${da} data-f="pos" value="${d.pos}" min="0" max="100" title="Position entlang der Wand">
+          <label><input type="checkbox" ${da} data-f="open"${d.state !== 'closed' ? ' checked' : ''}> offen</label>
+          <button ${da} data-del="1" title="Tür entfernen">✕</button></div>`;
+      });
+    }
+    if (ri === 1) h += `<div class="muted" style="margin-top:6px">West ist die Verbindungswand – Türen dort unter Raum 1 „Ost“.</div>`;
+    const st = r.seat, sa = k => `data-s="${k}"`;
+    h += `<h3>Bestuhlung</h3><div class="row"><label>Stuhlreihen aufstellen</label><input type="checkbox" ${a} ${sa('on')}${st.on ? ' checked' : ''}></div>`;
+    if (st.on) {
+      h += `<div class="row"><label>Blöcke nebeneinander</label>${num(sa('bx'), st.bx, 1, 10, 1)}</div>`;
+      h += `<div class="row"><label>Blöcke hintereinander</label>${num(sa('by'), st.by, 1, 10, 1)}</div>`;
+      h += `<div class="row"><label>Reihen pro Block</label>${num(sa('rows'), st.rows, 1, 40, 1)}</div>`;
+      h += `<div class="row"><label>Stühle pro Reihe</label>${num(sa('seats'), st.seats, 1, 60, 1)}</div>`;
+      h += `<div class="row"><label>Gangbreite zwischen Blöcken (m)</label>${num(sa('aisle'), st.aisle, 1, 6, 0.5)}</div>`;
+      h += `<div class="row"><label>Belegung (%)</label>${num(sa('occ'), st.occ, 0, 100, 5)}</div>`;
+      const p = seatPlan(r, rect);
+      h += GEN.warn[ri] ? `<div class="warnt">${GEN.warn[ri]}</div>`
+        : `<div class="muted">${p.count} Sitzplätze, ${Math.round(p.count * st.occ / 100)} besetzt · Stuhl 0,5 m breit, Reihenabstand 1,0 m</div>`;
+    }
+    return h + '</section>';
+  }).join('');
+  if (key) for (const el of $('#rooms').querySelectorAll('input,select,button')) if (JSON.stringify(el.dataset) === key) { el.focus(); break; }
+}
+function roomEvent(e, live) {
+  const t = e.target, ds = t.dataset; if (ds.r == null || t.tagName === 'BUTTON') return;
+  const ri = +ds.r, r = S.layout.rooms[ri];
+  if (ds.f) {
+    const d = r.doors[ds.w][+ds.d]; if (!d) return;
+    if (ds.f === 'open') {
+      if (live) return;
+      pushUndo(); d.state = t.checked ? 'open' : 'closed';
+      const it = S.items.find(i => i.src && i.src[0] === ri && i.src[1] === ds.w && i.src[2] === +ds.d);
+      if (it) it.state = d.state;
+      navDirty = true; save(); renderProps(); return;
+    }
+    if (live && ds.f !== 'pos') return;
+    if (!live) pushUndo();
+    d[ds.f] = ds.f === 'w' ? clamp(+t.value || 1, 0.6, 20) : clamp(+t.value || 0, 0, 100);
+    regen(); if (!live) renderRooms(); return;
+  }
+  if (live) return;
+  pushUndo();
+  const v = +t.value || 0;
+  if (ds.s) {
+    const st = r.seat, k = ds.s;
+    st[k] = k === 'on' ? t.checked : k === 'aisle' ? clamp(half(v), 1, 6) : k === 'occ' ? clamp(v, 0, 100)
+      : clamp(Math.round(v), 1, k === 'seats' ? 60 : k === 'rows' ? 40 : 10);
+  } else if (ds.k) {
+    const k = ds.k;
+    r[k] = k === 'on' ? t.checked : k === 'name' ? t.value : k === 'mode' ? t.value
+      : k === 'qm' ? clamp(v, 9, 10000) : k === 'persons' ? clamp(Math.round(v), 0, 5000) : clamp(half(v), 3, 100);
+    if (k === 'mode' && r.mode === 'qm') r.qm = Math.round(dims({ ...r, mode: 'lw' }).reduce((p, q) => p * q));
+    if (k === 'mode' && r.mode === 'lw') { const sd = dims({ ...r, mode: 'qm' })[0]; r.l = sd; r.w = sd; }
+  }
+  regen(); renderRooms(); fit();
+}
+$('#rooms').addEventListener('change', e => roomEvent(e, false));
+$('#rooms').addEventListener('input', e => roomEvent(e, true));
+$('#rooms').addEventListener('click', e => {
+  const ds = e.target.dataset; if (e.target.tagName !== 'BUTTON' || ds.r == null) return;
+  const r = S.layout.rooms[+ds.r];
+  pushUndo();
+  if (ds.add) r.doors[ds.add].push(newDoor(1.2, r.doors[ds.add].length ? 100 : 50));
+  else if (ds.del) r.doors[ds.w].splice(+ds.d, 1);
+  regen(); renderRooms();
+});
+
+/* ---------- Auswahl, Kennzahlen, Ergebnisse ---------- */
+function getSel() { return selId == null ? null : S.items.find(i => i.id === selId) || null; }
+function renderProps() {
+  const it = getSel(), el = $('#props');
+  if (!it) { el.innerHTML = '<div class="muted">Nichts ausgewählt. Mit „+ Hindernis“ Rechtecke in die Räume ziehen; Türen lassen sich anklicken.</div>'; return; }
+  const row = (lbl, html) => `<div class="row"><label>${lbl}</label>${html}</div>`;
+  const sel = (k, opts) => `<select data-k="${k}">${opts.map(o => `<option value="${o[0]}"${String(it[k]) === String(o[0]) ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  let h;
+  if (it.type === 'door') {
+    h = `<div class="row"><label><b>${esc(it.name)}</b></label><span>${fmt(segLen(it), 1)} m</span></div>`;
+    h += row('Zustand', sel('state', [['open', 'offen'], ['closed', 'gesperrt']]));
+    h += row('Richtung', sel('dir', [['both', 'beide Richtungen'], ['fwd', 'Einbahn (Pfeil)'], ['rev', 'Einbahn (umgekehrt)']]));
+    h += row('Dosierung (P/min, 0 = frei)', `<input type="number" data-k="limit" value="${it.limit}" min="0" step="5">`);
+  } else {
+    h = `<div class="row"><label><b>Hindernis</b></label><span>${fmt(it.w)} × ${fmt(it.h)} m</span></div>`;
+    h += row('Bezeichnung', `<input type="text" data-k="name" value="${esc(it.name || '')}">`);
+    h += `<div class="btns" style="margin-top:8px"><button class="danger" id="del">Löschen</button></div>`;
+  }
+  el.innerHTML = h;
+}
+$('#props').addEventListener('change', e => {
+  const k = e.target.dataset.k, it = getSel(); if (!k || !it) return;
+  pushUndo();
+  it[k] = e.target.type === 'number' ? Math.max(0, +e.target.value || 0) : e.target.value;
+  if (it.src) { S.layout.rooms[it.src[0]].doors[it.src[1]][it.src[2]][k] = it[k]; if (k === 'state') renderRooms(); }
+  navDirty = true; save();
+});
+$('#props').addEventListener('click', e => { if (e.target.id === 'del') deleteSel(); });
+function renderStats() {
+  const P = S.params;
+  $('#k-time').textContent = mmss(simTime); $('#k-in').textContent = agents.length; $('#k-out').textContent = stats.left;
+  $('#k-v').textContent = agents.length ? fmt(stats.meanV, 2) : '–';
+  $('#k-d').textContent = fmt(stats.maxD); $('#k-dp').textContent = fmt(stats.peak); $('#k-a').textContent = Math.round(stats.area);
+  let stuck = 0;
+  if (NAV) { const f = NAV.fields.get('nearest'); for (const a of agents) { const c = Math.min(NAV.ny - 1, Math.floor(a.y / NAV.cs)) * NAV.nx + Math.min(NAV.nx - 1, Math.floor(a.x / NAV.cs)); if (!f || f[c] === Infinity) stuck++; } }
+  $('#k-stuck').textContent = stuck;
+  const st = $('#status');
+  if (stuck) { st.className = 'crit'; st.textContent = stuck + ' Personen ohne erreichbaren Ausgang'; }
+  else if (stats.maxD >= P.crit) { st.className = 'crit'; st.textContent = 'Kritisch – Dichte über ' + fmt(P.crit) + ' P/m²'; }
+  else if (stats.maxD >= P.warn) { st.className = 'warn'; st.textContent = 'Warnung – Dichte über ' + fmt(P.warn) + ' P/m²'; }
+  else { st.className = ''; st.textContent = done ? 'Geräumt in ' + mmss(stats.lastLeft) + ' min' : 'Unkritisch'; }
+  const c = $('#chart'), g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (hist.length > 1) {
+    const mx = [Math.max(1, ...hist.map(h => h[0])), Math.max(P.crit, ...hist.map(h => h[1]))];
+    ['#4f9cf9', '#f59e0b'].forEach((col, k) => {
+      g.strokeStyle = col; g.lineWidth = 3; g.beginPath();
+      hist.forEach((h, i) => { const x = 6 + i / (hist.length - 1) * (c.width - 12), y = c.height - 8 - h[k] / mx[k] * (c.height - 16); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+      g.stroke();
+    });
+  }
+}
+function renderResults() {
+  let h = '<tr><th>Szenario</th><th class="num">Personen</th><th class="num">Ausgänge</th><th class="num">Räumung</th><th class="num">Spitze P/m²</th></tr>';
+  for (const r of STORE.results) h += `<tr><td>${esc(r.name)}</td><td class="num">${r.persons}</td><td class="num">${r.exits} / ${fmt(r.width)} m</td><td class="num">${mmss(r.time)}</td><td class="num">${fmt(r.peak)}</td></tr>`;
+  if (!STORE.results.length) h += '<tr><td colspan="5" class="muted">Jeder vollständige Durchlauf wird hier eingetragen.</td></tr>';
+  $('#results').innerHTML = h;
+}
+$('#res-clear').onclick = () => { STORE.results = []; renderResults(); save(); };
+function finish() {
+  done = true; setRunning(false);
+  const ex = S.items.filter(i => i.type === 'door' && i.src && i.state !== 'closed' && S.items.some(e => e.type === 'exit' && e.name === i.name));
+  STORE.results.push({ name: S.name, persons: stats.left, time: stats.lastLeft, peak: stats.peak, exits: ex.length, width: ex.reduce((s, d) => s + segLen(d), 0) });
+  if (STORE.results.length > 30) STORE.results.shift();
+  renderResults(); renderStats(); save();
+}
+function syncInputs() {
+  document.querySelectorAll('[data-p]').forEach(i => { const v = S.params[i.dataset.p]; if (i.type === 'checkbox') i.checked = v; else i.value = v; });
+  $('#repel-v').textContent = '(' + fmt(S.params.repel) + '×)';
+  $('#sc-name').value = S.name;
+  const names = Object.keys(STORE.scenarios).sort();
+  $('#sc-list').innerHTML = '<option value="">– auswählen –</option>' + names.map(n => `<option${n === S.name ? ' selected' : ''}>${esc(n)}</option>`).join('');
+}
+document.querySelectorAll('[data-p]').forEach(i => i.addEventListener('input', () => {
+  const k = i.dataset.p;
+  S.params[k] = i.type === 'checkbox' ? i.checked : (+i.value || 0);
+  if (k === 'radius') { S.params.radius = clamp(S.params.radius, 0.15, 0.4); for (const a of agents) a.r = S.params.radius; }
+  if (k === 'crit' || k === 'warn') S.params.crit = Math.max(S.params.crit, S.params.warn);
+  $('#repel-v').textContent = '(' + fmt(S.params.repel) + '×)';
+  save();
+}));
+
+/* ---------- Bearbeiten (Hindernisse) ---------- */
+const stripped = () => ({ ...S, items: S.items.filter(i => !i.gen) });
+function pushUndo() {
+  const snap = JSON.stringify(stripped());
+  if (undoStack[undoStack.length - 1] !== snap) { undoStack.push(snap); if (undoStack.length > 60) undoStack.shift(); }
+}
+function undo() {
+  const snap = undoStack.pop(); if (!snap) return;
+  S = JSON.parse(snap); selId = null; drag = null; regen(); syncInputs(); renderRooms(); renderProps(); fit();
+}
+let saveTimer = 0;
+function saveNow() { try { localStorage.setItem('crowd-v2', JSON.stringify({ ...STORE, current: stripped() })); } catch (e) {} }
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
+window.addEventListener('pagehide', saveNow);
+// Vor dem Start werden die Personen neu verteilt, damit niemand im Hindernis steht
+function obstChanged() { navDirty = true; save(); if (!running && simTime === 0) resetSim(); }
+function deleteSel() {
+  const it = getSel(); if (!it || it.gen) return;
+  pushUndo(); S.items = S.items.filter(i => i !== it); selId = null; obstChanged(); renderProps();
+}
+function handles(it) {
+  if (isSeg(it)) return [];
+  return [{ x: it.x, y: it.y, k: 0 }, { x: it.x + it.w, y: it.y, k: 1 }, { x: it.x + it.w, y: it.y + it.h, k: 2 }, { x: it.x, y: it.y + it.h, k: 3 }];
+}
+function hitTest(x, y) {
+  const tol = 9 / view.s;
+  for (let i = S.items.length - 1; i >= 0; i--) { const it = S.items[i]; if (it.type === 'door' && distSeg(x, y, it) < tol) return it; }
+  for (let i = S.items.length - 1; i >= 0; i--) { const it = S.items[i]; if (it.type === 'obstacle' && !it.gen && inRect(x, y, it)) return it; }
+  return null;
+}
+function setTool(t) {
+  tool = t; drag = null;
+  document.querySelectorAll('#tools button').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+  $('#hint').textContent = HINTS[t];
+  cv.style.cursor = t === 'pan' ? 'grab' : t === 'select' ? 'default' : 'crosshair';
+}
+function wpos(e, snapIt = true) {
+  const r = cv.getBoundingClientRect();
+  let x = (e.clientX - r.left - view.ox) / view.s, y = (e.clientY - r.top - view.oy) / view.s;
+  if (snapIt && $('#snap').checked && !e.altKey) { x = half(x); y = half(y); }
+  return [x, y];
+}
+const snapV = (v, e) => $('#snap').checked && !e.altKey ? half(v) : v;
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  if (tool === 'pan' || e.button === 1 || e.button === 2) { drag = { kind: 'pan', px: e.clientX, py: e.clientY, ox: view.ox, oy: view.oy }; return; }
+  const [x, y] = wpos(e), [rx, ry] = wpos(e, false);
+  if (tool === 'select') {
+    const sel = getSel();
+    if (sel && !sel.gen) {
+      const h = handles(sel).find(h => Math.hypot(X(h.x) - X(rx), Y(h.y) - Y(ry)) < 9);
+      if (h) { pushUndo(); drag = { kind: 'handle', it: sel, fix: handles(sel)[(h.k + 2) % 4] }; return; }
+    }
+    const it = hitTest(rx, ry);
+    selId = it ? it.id : null; renderProps();
+    if (it && !it.gen) drag = { kind: 'move', it, sx: rx, sy: ry, orig: { ...it }, moved: false };
+    return;
+  }
+  drag = { kind: 'rect', x1: x, y1: y, x2: x, y2: y };
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (drag.kind === 'pan') { view.ox = drag.ox + e.clientX - drag.px; view.oy = drag.oy + e.clientY - drag.py; return; }
+  const [x, y] = wpos(e), [rx, ry] = wpos(e, false);
+  if (drag.kind === 'rect') { drag.x2 = x; drag.y2 = y; return; }
+  const it = drag.it;
+  if (drag.kind === 'move') {
+    const dx = snapV(rx - drag.sx, e), dy = snapV(ry - drag.sy, e);
+    if (!drag.moved && (dx || dy)) { pushUndo(); drag.moved = true; }
+    if (!drag.moved) return;
+    it.x = drag.orig.x + dx; it.y = drag.orig.y + dy;
+  } else { const f = drag.fix; it.x = Math.min(f.x, x); it.y = Math.min(f.y, y); it.w = Math.max(0.5, Math.abs(x - f.x)); it.h = Math.max(0.5, Math.abs(y - f.y)); }
+});
+cv.addEventListener('pointerup', () => {
+  const d = drag; drag = null; if (!d || d.kind === 'pan') return;
+  if (d.kind === 'rect') {
+    const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2), w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
+    if (w < 0.3 || h < 0.3) return;
+    pushUndo();
+    const it = { id: S.nextId++, type: 'obstacle', x, y, w, h, name: '' };
+    S.items.push(it); selId = it.id; setTool('select');
+  } else if (d.kind === 'move' && !d.moved) return;
+  obstChanged(); renderProps();
+});
+function zoomAt(f, px, py) {
+  const ns = clamp(view.s * f, 0.5, 200), k = ns / view.s;
+  view.ox = px - (px - view.ox) * k; view.oy = py - (py - view.oy) * k; view.s = ns;
+}
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const r = cv.getBoundingClientRect();
+  zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+$('#zin').onclick = () => zoomAt(1.3, cw / 2, ch / 2);
+$('#zout').onclick = () => zoomAt(1 / 1.3, cw / 2, ch / 2);
+$('#zfit').onclick = fit;
+
+/* ---------- Szenarien ---------- */
+function apply(s) {
+  const d = defaults();
+  if (!s || s.version !== 2 || !s.layout || !Array.isArray(s.layout.rooms) || s.layout.rooms.length !== 2) s = d;
+  S = { ...d, ...s, params: { ...d.params, ...(s.params || {}) }, items: (s.items || []).filter(i => !i.gen && i.type === 'obstacle') };
+  S.layout.rooms.forEach((r, i) => { const b = newRoom(r.name || 'Raum ' + (i + 1), 10, 10); S.layout.rooms[i] = { ...b, ...r, doors: { ...b.doors, ...(r.doors || {}) }, seat: { ...b.seat, ...(r.seat || {}) } }; });
+  S.layout.rooms[0].on = true;
+  S.nextId = 1 + Math.max(0, ...S.items.map(i => i.id || 0));
+  selId = null; undoStack = [];
+  regen(); syncInputs(); renderRooms(); renderProps(); renderResults(); fit();
+}
+$('#sc-name').addEventListener('change', e => { S.name = e.target.value.trim() || 'Szenario'; save(); });
+$('#sc-save').onclick = () => {
+  S.name = $('#sc-name').value.trim() || 'Szenario';
+  STORE.scenarios[S.name] = JSON.parse(JSON.stringify(stripped())); syncInputs(); save();
+};
+$('#sc-list').addEventListener('change', e => { const s = STORE.scenarios[e.target.value]; if (s) apply(JSON.parse(JSON.stringify(s))); });
+$('#sc-del').onclick = () => {
+  const n = $('#sc-list').value || S.name;
+  if (STORE.scenarios[n] && confirm('Szenario „' + n + '“ löschen?')) { delete STORE.scenarios[n]; syncInputs(); save(); }
+};
+$('#sc-export').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...STORE, current: stripped() })], { type: 'application/json' }));
+  a.download = 'raeumungsszenarien.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#sc-import').onclick = () => $('#f-json').click();
+$('#f-json').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  f.text().then(t => {
+    try {
+      const d = JSON.parse(t); if (!d || !d.current || d.current.version !== 2) throw 0;
+      STORE = { scenarios: d.scenarios || {}, results: d.results || [] }; apply(d.current);
+    } catch (err) { alert('Die Datei enthält keine gültigen Szenarien.'); }
+  });
+});
+
+/* ---------- Steuerung ---------- */
+document.querySelectorAll('#tools button').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+function setRunning(r) { running = r; $('#play').textContent = r ? '❚❚ Pause' : '▶ Start'; }
+function toggleRun() { if (!running && done) resetSim(); setRunning(!running); }
+$('#play').onclick = toggleRun;
+$('#reset').onclick = () => { setRunning(false); resetSim(); renderStats(); };
+$('#undo').onclick = undo;
+window.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { deleteSel(); e.preventDefault(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { undo(); e.preventDefault(); }
+  else if (e.key === 'Escape') { drag = null; selId = null; renderProps(); setTool('select'); }
+  else if (e.key === ' ') { toggleRun(); e.preventDefault(); }
+});
+window.addEventListener('resize', () => { resize(); fit(); });
+
+let last = 0, acc = 0, statT = 0;
+function frame(ts) {
+  const fdt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  if (navDirty && !drag) buildNav();
+  if (running && NAV) {
+    acc += fdt * +$('#speed').value;
+    let k = 0; const t0 = performance.now();
+    while (acc >= DT && k < 40 && performance.now() - t0 < 30) { step(); acc -= DT; k++; }
+    if (acc > DT * 4) acc = 0;
+    if (!agents.length && stats.spawned) finish();
+  }
+  draw();
+  if (ts - statT > 400) { statT = ts; renderStats(); }
+  requestAnimationFrame(frame);
+}
+
+(function init() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem('crowd-v2')); } catch (e) {}
+  if (d) STORE = { scenarios: d.scenarios || {}, results: d.results || [] };
+  resize();
+  apply(d && d.current);
+  setTool('select');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
