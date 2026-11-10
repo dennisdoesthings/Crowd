@@ -126,6 +126,7 @@
         <button id="sc-export">Export</button>
         <button id="sc-import">Import</button>
       </div>
+      <div class="btns" style="margin-top:6px"><button id="sc-new">Auf Ausgangszustand zurücksetzen</button></div>
     </section>
 
     <div id="rooms"></div>
@@ -1041,6 +1042,10 @@ cv.addEventListener('pointerup', () => {
   } else if (d.kind === 'move' && !d.moved) return;
   obstChanged(); renderProps();
 });
+cv.addEventListener('pointercancel', () => {
+  const d = drag; drag = null;
+  if (d && (d.kind === 'move' || d.kind === 'handle')) obstChanged();
+});
 function zoomAt(f, px, py) {
   const ns = clamp(view.s * f, 0.5, 200), k = ns / view.s;
   view.ox = px - (px - view.ox) * k; view.oy = py - (py - view.oy) * k; view.s = ns;
@@ -1073,6 +1078,9 @@ $('#sc-list').addEventListener('change', e => { const s = STORE.scenarios[e.targ
 $('#sc-del').onclick = () => {
   const n = $('#sc-list').value || S.name;
   if (STORE.scenarios[n] && confirm('Szenario „' + n + '“ löschen?')) { delete STORE.scenarios[n]; syncInputs(); save(); }
+};
+$('#sc-new').onclick = () => {
+  if (confirm('Räume, Türen, Bestuhlung und Hindernisse auf den Ausgangszustand zurücksetzen? Gespeicherte Szenarien bleiben erhalten.')) { apply(defaults()); setTool('select'); }
 };
 $('#sc-export').onclick = () => {
   const a = document.createElement('a');
